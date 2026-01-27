@@ -35,6 +35,10 @@
   let editingSessionId: string | null = null; // Session being renamed
   let editingName: string = ""; // Current edit value
 
+  // Platform detection for keyboard shortcut labels
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+  const modKey = isMac ? "⌘" : "Ctrl+";
+
   async function initSession(tileId: string, autoStart: boolean = true) {
     const tile = tiles.find(t => t.id === tileId);
     if (!tile || tile.type !== "terminal" || tile.sessionId) return;
@@ -66,6 +70,10 @@
     } else {
       expandedTile = tileId;
     }
+    // Force terminals to re-fit after CSS transition completes
+    setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
+    setTimeout(() => window.dispatchEvent(new Event("resize")), 250);
+    setTimeout(() => window.dispatchEvent(new Event("resize")), 500);
   }
 
   function addTile() {
@@ -441,7 +449,7 @@
 <div class="app">
   <div class="titlebar" data-tauri-drag-region>
     {#if visibleTiles.length < 12}
-      <button class="titlebar-add" onclick={addTile} title="New Terminal (⌘T)">
+      <button class="titlebar-add" onclick={addTile} title="New Terminal ({modKey}T)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="12" y1="5" x2="12" y2="19"></line>
           <line x1="5" y1="12" x2="19" y2="12"></line>

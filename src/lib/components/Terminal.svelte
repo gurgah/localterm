@@ -37,6 +37,7 @@
   let detectTimeout: ReturnType<typeof setTimeout> | null = null;
   let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
   let activeQuestionId: string | null = null;
+  let windowResizeHandler: (() => void) | null = null;
 
   /**
    * Detect Claude state using process-based detection (isRunning)
@@ -310,34 +311,38 @@
       });
       resizeObserver.observe(terminalEl);
 
+      // Full refit: fit + refresh + sync PTY size
+      function fullRefit() {
+        safeTerminalOp(() => {
+          const rect = terminalEl?.getBoundingClientRect();
+          if (!rect || rect.width < 50 || rect.height < 50) return;
+
+          fitAddon?.fit();
+          if (terminal) {
+            terminal.refresh(0, terminal.rows - 1);
+            const { cols, rows } = terminal;
+            if (cols >= 10 && rows >= 4) {
+              resizeSession(sessionId, cols, rows).catch(console.error);
+            }
+          }
+        });
+      }
+
       // Refit when terminal becomes visible again (e.g. after another tile was expanded)
       intersectionObserver = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting) {
-          requestAnimationFrame(() => {
-            safeTerminalOp(() => {
-              fitAddon?.fit();
-              if (terminal) {
-                terminal.refresh(0, terminal.rows - 1);
-                // Re-sync PTY size when tile becomes visible again
-                const { cols, rows } = terminal;
-                if (cols >= 10 && rows >= 4) {
-                  resizeSession(sessionId, cols, rows).catch(console.error);
-                }
-              }
-            });
-            // Second fit after Ink has time to re-render at new size
-            setTimeout(() => {
-              safeTerminalOp(() => {
-                fitAddon?.fit();
-                if (terminal) {
-                  terminal.refresh(0, terminal.rows - 1);
-                }
-              });
-            }, 200);
-          });
+          // Multiple refit attempts to handle CSS transitions
+          requestAnimationFrame(() => fullRefit());
+          setTimeout(() => fullRefit(), 100);
+          setTimeout(() => fullRefit(), 300);
+          setTimeout(() => fullRefit(), 600);
         }
       });
       intersectionObserver.observe(terminalEl);
+
+      // Also refit on window resize (triggered by expand/collapse)
+      windowResizeHandler = () => fullRefit();
+      window.addEventListener("resize", windowResizeHandler);
 
     } catch (e) {
       console.error("Tauri API error:", e);
@@ -389,6 +394,12 @@
     resizeObserver = null;
     intersectionObserver?.disconnect();
     intersectionObserver = null;
+
+    // Remove window resize listener
+    if (windowResizeHandler) {
+      window.removeEventListener("resize", windowResizeHandler);
+      windowResizeHandler = null;
+    }
 
     // Remove event listeners
     if (unlistenOutput) {

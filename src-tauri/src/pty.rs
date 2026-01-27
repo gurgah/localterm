@@ -56,11 +56,17 @@ impl PtyManager {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        // Get default shell
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        // Get default shell (platform-aware)
+        let shell = if cfg!(target_os = "windows") {
+            std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string())
+        } else {
+            std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+        };
 
         let mut cmd = CommandBuilder::new(&shell);
-        cmd.arg("-l"); // Login shell
+        if !cfg!(target_os = "windows") {
+            cmd.arg("-l"); // Login shell (Unix only)
+        }
 
         // Set working directory
         if let Some(dir) = cwd {
@@ -194,8 +200,8 @@ impl PtyManager {
     }
 
     /// Recursively check if any descendant process is "claude"
+    #[cfg(not(target_os = "windows"))]
     fn has_claude_descendant(pid: u32) -> bool {
-        // Get direct children of this PID
         let output = std::process::Command::new("pgrep")
             .arg("-P")
             .arg(pid.to_string())
@@ -209,35 +215,79 @@ impl PtyManager {
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines() {
             if let Ok(child_pid) = line.trim().parse::<u32>() {
-                // Check if this child process is "claude"
                 if Self::is_process_claude(child_pid) {
                     return true;
                 }
-                // Recurse into grandchildren
                 if Self::has_claude_descendant(child_pid) {
                     return true;
                 }
             }
         }
+        false
+    }
 
+    #[cfg(target_os = "windows")]
+    fn has_claude_descendant(pid: u32) -> bool {
+        // Use WMIC to find child processes on Windows
+        let output = std::process::Command::new("wmic")
+            .args(["process", "where", &format!("ParentProcessId={}", pid), "get", "ProcessId,Name", "/format:csv"])
+            .output();
+
+        let output = match output {
+            Ok(o) => o,
+            Err(_) => return false,
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() >= 3 {
+                let name = parts[1].trim().to_lowercase();
+                if name.contains("claude") {
+                    return true;
+                }
+                if let Ok(child_pid) = parts[2].trim().parse::<u32>() {
+                    if child_pid != pid && Self::has_claude_descendant(child_pid) {
+                        return true;
+                    }
+                }
+            }
+        }
         false
     }
 
     /// Check if a process with the given PID has "claude" in its command name
     fn is_process_claude(pid: u32) -> bool {
-        let output = std::process::Command::new("ps")
-            .arg("-p")
-            .arg(pid.to_string())
-            .arg("-o")
-            .arg("comm=")
-            .output();
+        #[cfg(not(target_os = "windows"))]
+        {
+            let output = std::process::Command::new("ps")
+                .arg("-p")
+                .arg(pid.to_string())
+                .arg("-o")
+                .arg("comm=")
+                .output();
 
-        match output {
-            Ok(o) => {
-                let comm = String::from_utf8_lossy(&o.stdout).trim().to_lowercase();
-                comm.contains("claude")
+            match output {
+                Ok(o) => {
+                    let comm = String::from_utf8_lossy(&o.stdout).trim().to_lowercase();
+                    comm.contains("claude")
+                }
+                Err(_) => false,
             }
-            Err(_) => false,
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let output = std::process::Command::new("tasklist")
+                .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+                .output();
+
+            match output {
+                Ok(o) => {
+                    let out = String::from_utf8_lossy(&o.stdout).to_lowercase();
+                    out.contains("claude")
+                }
+                Err(_) => false,
+            }
         }
     }
 
