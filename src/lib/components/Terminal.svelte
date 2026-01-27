@@ -260,7 +260,12 @@
       if (autoStart) {
         setTimeout(() => {
           if (!isDisposed) {
-            writeToSession(sessionId, "claude\n").catch(console.error);
+            // Check if claude exists, if not show install instructions
+            const isWin = navigator.platform.indexOf("Win") >= 0;
+            const checkCmd = isWin
+              ? 'where claude >nul 2>nul && claude || echo. && echo [LocalTerm] Claude Code not found. && echo. && echo To install: && echo   npm install -g @anthropic-ai/claude-code && echo. && echo Requirements: Node.js 18+ (https://nodejs.org) && echo. && echo Guide: https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview\r\n'
+              : 'command -v claude >/dev/null 2>&1 && claude || echo "" && echo "[LocalTerm] Claude Code not found." && echo "" && echo "To install:" && echo "  npm install -g @anthropic-ai/claude-code" && echo "" && echo "Requirements: Node.js 18+ (https://nodejs.org)" && echo "" && echo "Guide: https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview"\n';
+            writeToSession(sessionId, checkCmd).catch(console.error);
           }
         }, 500);
       }

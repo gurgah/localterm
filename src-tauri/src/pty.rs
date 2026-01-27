@@ -228,9 +228,13 @@ impl PtyManager {
 
     #[cfg(target_os = "windows")]
     fn has_claude_descendant(pid: u32) -> bool {
-        // Use WMIC to find child processes on Windows
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        // Use WMIC to find child processes on Windows (hidden, no console window)
         let output = std::process::Command::new("wmic")
             .args(["process", "where", &format!("ParentProcessId={}", pid), "get", "ProcessId,Name", "/format:csv"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output();
 
         let output = match output {
@@ -277,8 +281,12 @@ impl PtyManager {
         }
         #[cfg(target_os = "windows")]
         {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+
             let output = std::process::Command::new("tasklist")
                 .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+                .creation_flags(CREATE_NO_WINDOW)
                 .output();
 
             match output {
