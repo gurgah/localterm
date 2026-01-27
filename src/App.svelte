@@ -422,9 +422,7 @@
     });
 
     const unlistenReportBug = await listen("menu-report-bug", async () => {
-      const subject = encodeURIComponent("LocalTerm Bug Report");
-      const body = encodeURIComponent("Please describe the bug:\n\n\nSteps to reproduce:\n1. \n2. \n3. \n\n");
-      await openUrl(`mailto:melih@aleonis.co?subject=${subject}&body=${body}`);
+      await openUrl("https://github.com/gurgah/localterm/issues");
     });
 
     // Handle Cmd+Q / window close request from Rust

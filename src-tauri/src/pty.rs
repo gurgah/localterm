@@ -79,6 +79,14 @@ impl PtyManager {
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
 
+        // Clear AppImage-injected env vars that break child processes
+        // (e.g. PYTHONHOME/PYTHONPATH from AppImage mount causes claude to fail)
+        cmd.env_remove("PYTHONHOME");
+        cmd.env_remove("PYTHONPATH");
+        cmd.env_remove("APPIMAGE");
+        cmd.env_remove("APPDIR");
+        cmd.env_remove("OWD");
+
         let child = pair
             .slave
             .spawn_command(cmd)
