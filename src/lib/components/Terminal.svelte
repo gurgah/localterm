@@ -151,7 +151,7 @@
     // Create xterm instance
     terminal = new Terminal({
       theme,
-      fontFamily: "'MesloLGS NF', 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', Menlo, 'DejaVu Sans Mono', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', monospace",
+      fontFamily: "'MesloLGS NF', 'Cascadia Code', Consolas, 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, 'DejaVu Sans Mono', monospace",
       fontSize,
       lineHeight: 1.0,
       letterSpacing: 0,
