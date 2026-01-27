@@ -193,15 +193,18 @@
 
     terminal.open(terminalEl);
 
-    // Load WebGL addon for better rendering (with fallback to canvas)
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        webglAddon.dispose();
-      });
-      terminal.loadAddon(webglAddon);
-    } catch (e) {
-      console.warn("WebGL addon failed to load, using canvas renderer");
+    // Load WebGL addon for better rendering (skip on Windows — causes black flashes)
+    const isWindows = navigator.platform.indexOf("Win") >= 0;
+    if (!isWindows) {
+      try {
+        const webglAddon = new WebglAddon();
+        webglAddon.onContextLoss(() => {
+          webglAddon.dispose();
+        });
+        terminal.loadAddon(webglAddon);
+      } catch (e) {
+        console.warn("WebGL addon failed to load, using canvas renderer");
+      }
     }
 
     // Initial fit — do it synchronously so PTY gets correct dimensions
