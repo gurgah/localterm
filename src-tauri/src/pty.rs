@@ -23,6 +23,7 @@ struct PtySession {
     writer: Box<dyn Write + Send>,
     #[allow(dead_code)]
     child: Box<dyn portable_pty::Child + Send + Sync>,
+    shell_pid: Option<u32>,
 }
 
 pub struct PtyManager {
@@ -77,6 +78,8 @@ impl PtyManager {
             .spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
+        let shell_pid = child.process_id();
+
         let writer = pair
             .master
             .take_writer()
@@ -96,6 +99,7 @@ impl PtyManager {
                     pair,
                     writer,
                     child,
+                    shell_pid,
                 },
             );
         }
@@ -171,6 +175,69 @@ impl PtyManager {
             Ok(())
         } else {
             Err(format!("Session not found: {}", session_id))
+        }
+    }
+
+    /// Check if a "claude" process is running as a descendant of the session's shell.
+    /// Uses `pgrep -P <pid>` to walk the process tree.
+    pub fn is_claude_running(&self, session_id: &str) -> Result<bool, String> {
+        let sessions = self.sessions.lock();
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| format!("Session not found: {}", session_id))?;
+
+        let shell_pid = session
+            .shell_pid
+            .ok_or_else(|| "Shell PID not available".to_string())?;
+
+        Ok(Self::has_claude_descendant(shell_pid))
+    }
+
+    /// Recursively check if any descendant process is "claude"
+    fn has_claude_descendant(pid: u32) -> bool {
+        // Get direct children of this PID
+        let output = std::process::Command::new("pgrep")
+            .arg("-P")
+            .arg(pid.to_string())
+            .output();
+
+        let output = match output {
+            Ok(o) => o,
+            Err(_) => return false,
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if let Ok(child_pid) = line.trim().parse::<u32>() {
+                // Check if this child process is "claude"
+                if Self::is_process_claude(child_pid) {
+                    return true;
+                }
+                // Recurse into grandchildren
+                if Self::has_claude_descendant(child_pid) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if a process with the given PID has "claude" in its command name
+    fn is_process_claude(pid: u32) -> bool {
+        let output = std::process::Command::new("ps")
+            .arg("-p")
+            .arg(pid.to_string())
+            .arg("-o")
+            .arg("comm=")
+            .output();
+
+        match output {
+            Ok(o) => {
+                let comm = String::from_utf8_lossy(&o.stdout).trim().to_lowercase();
+                comm.contains("claude")
+            }
+            Err(_) => false,
         }
     }
 

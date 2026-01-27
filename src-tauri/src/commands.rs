@@ -48,6 +48,14 @@ pub async fn close_session(
 }
 
 #[tauri::command]
+pub async fn is_claude_running(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<bool, String> {
+    state.pty_manager.is_claude_running(&session_id)
+}
+
+#[tauri::command]
 pub fn get_home_dir() -> Option<String> {
     dirs::home_dir().map(|p| p.to_string_lossy().to_string())
 }

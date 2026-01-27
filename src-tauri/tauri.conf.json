@@ -15,8 +15,8 @@
       {
         "label": "main",
         "title": "LocalTerm AI",
-        "width": 1000,
-        "height": 700,
+        "width": 1440,
+        "height": 900,
         "minWidth": 600,
         "minHeight": 400,
         "decorations": true,

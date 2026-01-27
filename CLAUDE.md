@@ -20,8 +20,10 @@ Minimal, lightweight terminal app for Claude Code - a VS Code alternative.
 ### Terminal Integration
 - Full PTY support via Rust backend
 - xterm.js for terminal emulation
-- Auto-start Claude Code on new terminal
+- **New Terminal Options**: "Start Claude" or "Command Line" choice on new tile
 - "Choose Folder" option for custom working directory
+- Text selection and copy/paste support
+- Double-click rename for terminal sessions
 
 ### Orchestrator Panel
 - **Permission Detection**: Parses terminal output to detect Claude Code permission prompts
@@ -46,18 +48,26 @@ Minimal, lightweight terminal app for Claude Code - a VS Code alternative.
 │                    App.svelte                        │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
 │  │ Orchestrator│  │  Terminal   │  │  Terminal   │  │
-│  │             │  │  (xterm.js) │  │  (xterm.js) │  │
-│  │  - Status   │  │             │  │             │  │
-│  │  - Perms    │  │             │  │             │  │
+│  │   (View)    │  │  (xterm.js) │  │  (xterm.js) │  │
 │  └─────────────┘  └─────────────┘  └─────────────┘  │
 └─────────────────────────────────────────────────────┘
          │                   │
          ▼                   ▼
 ┌─────────────────────────────────────────────────────┐
-│              Output Parser (TypeScript)              │
-│  - Detects permission prompts                        │
-│  - Detects prompt visibility (idle detection)        │
-│  - Strips ANSI codes for parsing                     │
+│                    Services                          │
+│  ┌─────────────────┐  ┌─────────────────────────┐   │
+│  │ claudeDetector  │  │ permissionHandler       │   │
+│  │ (state detect)  │  │ (send responses)        │   │
+│  └─────────────────┘  └─────────────────────────┘   │
+└─────────────────────────────────────────────────────┘
+         │                   │
+         ▼                   ▼
+┌─────────────────────────────────────────────────────┐
+│                    Stores                            │
+│  ┌─────────────────┐  ┌─────────────────────────┐   │
+│  │ sessions        │  │ orchestratorQueue       │   │
+│  │ (session state) │  │ (permission queue)      │   │
+│  └─────────────────┘  └─────────────────────────┘   │
 └─────────────────────────────────────────────────────┘
          │
          ▼
@@ -74,13 +84,24 @@ Minimal, lightweight terminal app for Claude Code - a VS Code alternative.
 | File | Purpose |
 |------|---------|
 | `src/App.svelte` | Main app with grid layout |
-| `src/lib/components/Terminal.svelte` | xterm.js terminal wrapper |
-| `src/lib/components/Orchestrator.svelte` | Permission queue & status display |
-| `src/lib/utils/outputParser.ts` | Terminal output parsing for prompts/questions |
+| `src/lib/components/Terminal.svelte` | xterm.js terminal + detection trigger |
+| `src/lib/components/Orchestrator.svelte` | Permission queue & status display (view) |
+| `src/lib/services/claudeDetector.ts` | Claude state detection (pure functions) |
+| `src/lib/services/permissionHandler.ts` | Permission response handling |
+| `src/lib/utils/terminalBuffer.ts` | xterm.js buffer reader utility |
 | `src/lib/stores/sessions.ts` | Session state management |
 | `src/lib/stores/orchestrator.ts` | Permission queue state |
 | `src-tauri/src/pty.rs` | Rust PTY implementation |
 | `src-tauri/tauri.conf.json` | Tauri window configuration |
+
+## Known Issues
+
+### Wide Terminal Detection Bug
+**Status**: Open
+
+When terminal is fullscreen/maximized, Claude detection fails - sessions show as "Shell" instead of "Claude". Permission prompts don't appear. **Workaround**: Use smaller window size.
+
+See `DEVELOPMENT_TRACKER.md` for details.
 
 ## Development
 
@@ -111,14 +132,30 @@ npm run tauri build
 ### Capabilities (capabilities/default.json)
 - `core:window:allow-start-dragging` - Window dragging
 - `shell:default` - Shell/PTY operations
+- `process:default` - App quit functionality
+
+### Menu Structure
+- **View**: New Terminal (Cmd+T), Close Terminal (Cmd+W)
+- **Settings**: Default Location, Show Orchestrator
+- **Help**: Report Bug... (opens mailto:melih@aleonis.co)
 
 ## Status Logic
 
-The output parser detects terminal state:
+The output parser (`outputParser.ts`) detects terminal state with robust debouncing:
 
-1. **Prompt Detection** (`❯` or `>` visible) → Status: `idle` (Ready)
-2. **Question Detection** (numbered options) → Status: `waiting` (Waiting for input)
-3. **Output Streaming** (no prompt) → Status: `active` (Working...)
+### Claude Detection (with Debouncing)
+- **Strong Indicators**: `? for shortcuts`, `/ide for`, `Esc to cancel/exit`, `Tab to add`, thinking/working indicators
+- **Exit Conditions** (all must be true):
+  1. Shell prompt visible (ends with `➜`, `$`, `>`, etc.)
+  2. 3+ consecutive non-Claude detections
+  3. 2+ seconds since last Claude UI detection
+  4. No Claude UI in last 3 lines
+
+### Status States
+1. **Shell Mode** - No Claude running, shows shell prompt
+2. **Active** (Working...) - Claude is processing, no prompt visible
+3. **Idle** (Ready) - Claude prompt visible, waiting for user input
+4. **Waiting** - Permission question detected, shown in Orchestrator
 
 ## Keyboard Shortcuts
 
@@ -126,10 +163,12 @@ The output parser detects terminal state:
 |----------|--------|
 | `Cmd+1-9` | Select terminal tile by index |
 | `Cmd+T` | New terminal tile |
-| `Cmd+W` | Close active terminal |
+| `Cmd+W` | Close active terminal (with confirmation) |
+| `Cmd+Q` | Quit app (with confirmation modal) |
 | `Cmd+[` | Previous terminal |
 | `Cmd+]` | Next terminal |
 | `Cmd+Enter` | Toggle fullscreen for active tile |
+| `Double-click` | Rename terminal session (on title) |
 
 ## Roadmap
 
@@ -139,7 +178,13 @@ The output parser detects terminal state:
 - [x] Permission detection & queue
 - [x] Status detection (Working/Ready/Waiting)
 - [x] Traffic light controls
-- [x] Keyboard shortcuts
+- [x] Keyboard shortcuts (Cmd+1-9, T, W, Q, [, ], Enter)
+- [x] Quit confirmation modal (Cmd+Q)
+- [x] Session rename (double-click)
+- [x] New terminal choice screen (Claude vs Command Line)
+- [x] Robust Claude detection with debouncing
+- [x] Text selection in terminal
+- [x] Max 12 tiles limit
 
 ### Phase 2 (Planned)
 - [ ] **Broadcast Mode** - Type in all terminals simultaneously (`Cmd+Shift+B`)
@@ -157,6 +202,27 @@ The output parser detects terminal state:
 
 ## Recent Changes (v0.1.0)
 
+### Latest (2026-01-26)
+- **Modular Architecture Refactor**:
+  - `src/lib/services/claudeDetector.ts` - Pure detection functions
+  - `src/lib/services/permissionHandler.ts` - Permission response handling
+  - `src/lib/utils/terminalBuffer.ts` - xterm.js buffer reader
+  - Separation of concerns: Services → Stores → Views
+- **xterm.js Buffer API** - Uses rendered terminal text instead of raw PTY output
+- **Report Bug Menu** - Opens mailto link via Tauri shell plugin
+- **Cmd+Q Quit Confirmation** - Full-screen modal overlay with blur effect
+- **Session Rename** - Double-click on terminal title to rename (max 20 chars)
+- **New Terminal Choice Screen** - Cmd+T shows "Start Claude" or "Command Line" options instead of auto-starting Claude
+- **Terminal Text Selection** - Fixed: can now select text in terminal
+- **Right-click Context Menu** - Only shows on tile header, not terminal content
+- **xterm.js rightClickSelectsWord** - Right-click on word selects it for quick copy
+- **Max 12 Tiles** - Enforced limit on terminal tiles
+- **Fixed Terminal Close Crashes** - Proper disposal handling with isDisposed flag and safeTerminalOp wrapper
+- **Orchestrator Menu Sync** - Checkbox state properly syncs with localStorage on startup
+
+**Known Issue**: Wide terminal detection bug - see Known Issues section above.
+
+### Earlier
 - Added keyboard shortcuts (Cmd+1-9, Cmd+T, Cmd+W, Cmd+[/], Cmd+Enter)
 - Added terminal status display to Orchestrator
 - **Improved Claude detection** - Status only shows when Claude Code is running
@@ -170,3 +236,71 @@ The output parser detects terminal state:
 - **Native macOS traffic lights** with overlay title bar
 - Fixed app icon with transparent corners
 - Hidden tiles still receive PTY output (visibility: hidden vs display: none)
+
+## Deployment Status (2026-01-26)
+
+### Live Website
+- **Landing Page**: https://localterm.aleonis.co
+- **OG Image**: https://localterm.aleonis.co/og-image.png
+
+### Download Links
+| Platform | URL |
+|----------|-----|
+| macOS ARM64 | https://localterm.aleonis.co/releases/LocalTerm-macos-arm64.dmg |
+| macOS Intel | https://localterm.aleonis.co/releases/LocalTerm-macos-x64.dmg |
+| Windows x64 | https://localterm.aleonis.co/releases/LocalTerm-windows-x64-setup.exe |
+| Linux x64 | https://localterm.aleonis.co/releases/LocalTerm-linux-x64.AppImage |
+
+### GitHub Repository
+- **Repo**: https://github.com/gurgah/localterm
+- **CI/CD**: GitHub Actions builds all platforms on tag push
+
+### AWS Infrastructure
+- **S3 Bucket**: localterm.aleonis.co (us-east-1)
+- **CloudFront**: deikkbzxq2ciy.cloudfront.net
+- **CloudFront ID**: `E1ZKEU71D8W5Q3`
+- **SSL Certificate**: ACM (us-east-1)
+- **DNS**: Namecheap CNAME → CloudFront
+
+### Download Analytics (CloudFront Logs)
+- **Log Bucket**: `s3://localterm-logs-aleonis/cloudfront/`
+- **Delay**: ~1 hour (CloudFront standard)
+- **Script**: `./scripts/download-stats.sh`
+
+```bash
+# View download statistics
+./scripts/download-stats.sh
+
+# Output includes:
+# - Downloads by file (dmg, exe, AppImage)
+# - Downloads by platform (macOS ARM/Intel, Windows, Linux)
+# - Downloads by date
+# - Total download count
+```
+
+### macOS Code Signing Status
+- **Certificate**: Developer ID Application: Melih Gurgah (8ZPW6SCJ4T)
+- **Entitlements**: `src-tauri/entitlements.plist` (sandbox disabled for PTY)
+- **App Signed**: Yes (with `codesign --deep --force --options runtime`)
+
+### Notarization Status: ⏳ IN PROGRESS
+- **Submission ID**: `472a4dae-5ff0-49e1-abc2-8e149514f5cf`
+- **Submitted**: 2026-01-26
+- **Status**: Apple is still processing
+
+#### Next Session Commands
+```bash
+# Check notarization status
+xcrun notarytool info 472a4dae-5ff0-49e1-abc2-8e149514f5cf --keychain-profile "notarytool-profile"
+
+# If status is "Accepted", staple the ticket
+xcrun stapler staple "/Users/drs/Code/claude-code-terminal/src-tauri/target/release/bundle/macos/LocalTerm AI.app"
+
+# Then recreate DMG and upload to S3
+hdiutil create -volname "LocalTerm AI" -srcfolder "LocalTerm AI.app" -ov -format UDZO "LocalTerm-macos-arm64.dmg"
+aws s3 cp "LocalTerm-macos-arm64.dmg" s3://localterm.aleonis.co/releases/ --profile mlxstudio
+aws cloudfront create-invalidation --distribution-id E1ZKEU71D8W5Q3 --paths "/releases/*" --profile mlxstudio
+```
+
+#### Workaround for Unsigned App
+Until notarization completes, users can run: Right-click → Open → Open (bypasses Gatekeeper)

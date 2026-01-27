@@ -1,4 +1,5 @@
 import { writable, derived } from "svelte/store";
+import type { ClaudeState } from "../services/claudeDetector";
 
 export interface Session {
   id: string;
@@ -48,6 +49,22 @@ function createSessionStore() {
     setClaudeRunning: (id: string, claudeRunning: boolean) => {
       update((sessions) =>
         sessions.map((s) => (s.id === id ? { ...s, claudeRunning } : s))
+      );
+    },
+
+    /**
+     * Update session state from ClaudeDetector result
+     */
+    updateFromDetector: (id: string, state: ClaudeState) => {
+      update((sessions) =>
+        sessions.map((s) => {
+          if (s.id !== id) return s;
+          return {
+            ...s,
+            claudeRunning: state.isRunning,
+            status: state.status,
+          };
+        })
       );
     },
 

@@ -63,6 +63,10 @@ export async function getDefaultShell(): Promise<string> {
   return invoke("get_default_shell");
 }
 
+export async function isClaudeRunning(sessionId: string): Promise<boolean> {
+  return invoke("is_claude_running", { sessionId });
+}
+
 // Event listeners
 export function onPtyOutput(
   callback: (output: PtyOutput) => void

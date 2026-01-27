@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            width: 1200px;
+            height: 630px;
+            background: linear-gradient(135deg, #0D1117 0%, #161B22 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 60px;
+            position: relative;
+            overflow: hidden;
+        }
+        .bg-pattern {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image:
+                radial-gradient(circle at 20% 80%, rgba(245, 158, 11, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(234, 88, 12, 0.1) 0%, transparent 50%);
+        }
+        .content {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+        }
+        .icon {
+            width: 120px;
+            height: 120px;
+            background: linear-gradient(135deg, #F59E0B 0%, #EA580C 100%);
+            border-radius: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 40px;
+            box-shadow: 0 20px 60px rgba(245, 158, 11, 0.3);
+        }
+        .icon svg {
+            width: 70px;
+            height: 70px;
+            color: white;
+        }
+        h1 {
+            font-size: 72px;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 20px;
+            letter-spacing: -2px;
+        }
+        h1 span {
+            background: linear-gradient(135deg, #F59E0B 0%, #EA580C 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        p {
+            font-size: 28px;
+            color: #8B949E;
+            max-width: 800px;
+            line-height: 1.4;
+        }
+        .tiles {
+            display: flex;
+            gap: 16px;
+            margin-top: 50px;
+        }
+        .tile {
+            width: 180px;
+            height: 100px;
+            background: #1C2128;
+            border: 1px solid #30363D;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            padding: 12px;
+        }
+        .tile-header {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .dot.red { background: #FF5F57; }
+        .dot.yellow { background: #FFBD2E; }
+        .dot.green { background: #28CA41; }
+        .tile-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .line {
+            height: 6px;
+            background: #30363D;
+            border-radius: 3px;
+        }
+        .line.short { width: 60%; }
+        .line.medium { width: 80%; }
+        .tile.active {
+            border-color: #3FB950;
+        }
+        .tile.active .line {
+            background: linear-gradient(90deg, #F59E0B, #EA580C);
+        }
+        .url {
+            position: absolute;
+            bottom: 40px;
+            font-size: 20px;
+            color: #484F58;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-pattern"></div>
+    <div class="content">
+        <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="4 17 10 11 4 5"></polyline>
+                <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+        </div>
+        <h1>The <span>Vibe Coding</span> Terminal</h1>
+        <p>Run multiple AI agents in parallel. One dashboard. No RAM-eating IDEs.</p>
+        <div class="tiles">
+            <div class="tile active">
+                <div class="tile-header">
+                    <div class="dot red"></div>
+                    <div class="dot yellow"></div>
+                    <div class="dot green"></div>
+                </div>
+                <div class="tile-content">
+                    <div class="line medium"></div>
+                    <div class="line short"></div>
+                </div>
+            </div>
+            <div class="tile">
+                <div class="tile-header">
+                    <div class="dot red"></div>
+                    <div class="dot yellow"></div>
+                    <div class="dot green"></div>
+                </div>
+                <div class="tile-content">
+                    <div class="line short"></div>
+                    <div class="line medium"></div>
+                </div>
+            </div>
+            <div class="tile">
+                <div class="tile-header">
+                    <div class="dot red"></div>
+                    <div class="dot yellow"></div>
+                    <div class="dot green"></div>
+                </div>
+                <div class="tile-content">
+                    <div class="line medium"></div>
+                    <div class="line short"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="url">localterm.aleonis.co</div>
+</body>
+</html>

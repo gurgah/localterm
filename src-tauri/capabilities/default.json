@@ -15,6 +15,9 @@
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",
     "core:window:allow-is-maximized",
-    "shell:default"
+    "shell:default",
+    "shell:allow-open",
+    "dialog:default",
+    "process:default"
   ]
 }

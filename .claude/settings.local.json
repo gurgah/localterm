@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run tauri:*)",
+      "Bash(pgrep:*)",
+      "Bash(xcrun notarytool info:*)",
+      "Bash(aws cloudfront get-distribution:*)",
+      "Bash(/Users/drs/Code/claude-code-terminal/scripts/download-stats.sh:*)",
+      "Bash(npm run check:*)",
+      "Bash(npm run:*)",
+      "Bash(npx svelte-check:*)",
+      "Bash(cargo check:*)",
+      "Bash(rustup target list:*)",
+      "Bash(rustup target add:*)"
+    ]
+  }
+}
