@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { get } from "svelte/store";
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -7,6 +8,7 @@
   import "@xterm/xterm/css/xterm.css";
   import {
     createSession,
+    createSessionWithEnv,
     writeToSession,
     resizeSession,
     isClaudeRunning,
@@ -19,6 +21,9 @@
   import { getTerminalText } from "../utils/terminalBuffer";
   import { detectClaudeState } from "../services/claudeDetector";
   import { orchestratorQueue } from "../stores/orchestrator";
+  import { settings } from "../stores/settings";
+  import { agentResponses } from "../stores/agentResponses";
+  import { shouldRouteToAgent, processAgentInput, triggerErrorRecovery } from "../agents/integration";
 
   export let sessionId: string;
   export let sessionName: string = "Terminal";
@@ -38,6 +43,7 @@
   let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
   let activeQuestionId: string | null = null;
   let windowResizeHandler: (() => void) | null = null;
+  let lastErrorDetectionTime = 0;
 
   /**
    * Detect Claude state using process-based detection (isRunning)
@@ -84,6 +90,30 @@
 
       // Update session store
       sessions.updateFromDetector(sessionId, finalState);
+
+      // Error detection — trigger agent recovery if terminal shows errors (debounced 10s)
+      const now = Date.now();
+      if (get(settings).llm.enabled && !processRunning && text && now - lastErrorDetectionTime > 10000) {
+        const errorPatterns = [
+          /(?:error|ERR!|ENOENT|EACCES|EPERM|FATAL|panic|Traceback|SyntaxError|TypeError|ReferenceError|ModuleNotFoundError)/i,
+        ];
+        const lastLines = text.split("\n").slice(-10).join("\n");
+        const hasError = errorPatterns.some((p) => p.test(lastLines));
+        if (hasError) {
+          lastErrorDetectionTime = now;
+          const context = {
+            cwd,
+            lastOutput: lastLines,
+            recentCommands: [] as string[],
+            isGitRepo: false,
+          };
+          triggerErrorRecovery(lastLines, 1, context).then((response) => {
+            if (response && !isDisposed) {
+              agentResponses.push(sessionId, response);
+            }
+          }).catch(console.error);
+        }
+      }
 
       // Handle permission prompts
       if (finalState.hasPermissionPrompt && finalState.permissionQuestion && !activeQuestionId) {
@@ -239,8 +269,18 @@
         }
       });
 
-      // Create PTY session
-      await createSession(sessionId, cwd, cols, rows);
+      // Create PTY session — inject ANTHROPIC_BASE_URL if local LLM is enabled
+      const currentSettings = get(settings);
+      if (currentSettings.llm.enabled && currentSettings.llm.useForClaudeCode) {
+        const port = 11435; // llm_server::DEFAULT_PORT
+        const envVars: [string, string][] = [
+          ["ANTHROPIC_BASE_URL", `http://localhost:${port}`],
+          ["ANTHROPIC_AUTH_TOKEN", "localterm"],
+        ];
+        await createSessionWithEnv(sessionId, cwd, cols, rows, envVars);
+      } else {
+        await createSession(sessionId, cwd, cols, rows);
+      }
       sessions.setStatus(sessionId, "active");
 
       // Second fit after PTY exists — catches any layout settling
@@ -270,9 +310,48 @@
         }, 500);
       }
 
-      // Handle input from xterm
+      // Handle input from xterm — intercept agent queries
+      let inputBuffer = "";
       terminal.onData((data) => {
-        if (!isDisposed) {
+        if (isDisposed) return;
+
+        // Buffer line input to detect agent queries on Enter
+        if (data === "\r" || data === "\n") {
+          const trimmed = inputBuffer.trim();
+
+          // Check if this looks like an agent query (? prefix or natural language)
+          if (trimmed.startsWith("?") && get(settings).llm.enabled) {
+            const query = trimmed.startsWith("? ") ? trimmed.slice(2) : trimmed.slice(1);
+            if (query.length > 0) {
+              // Show feedback in terminal
+              terminal?.write("\r\n");
+
+              const context = {
+                cwd,
+                recentCommands: [] as string[],
+                isGitRepo: false,
+              };
+
+              processAgentInput(query, context, true).then((response) => {
+                if (response && !isDisposed) {
+                  agentResponses.push(sessionId, response);
+                }
+              }).catch(console.error);
+
+              inputBuffer = "";
+              return;
+            }
+          }
+
+          // Normal input — send to PTY
+          writeToSession(sessionId, data).catch(console.error);
+          inputBuffer = "";
+        } else if (data === "\x7f") {
+          // Backspace
+          inputBuffer = inputBuffer.slice(0, -1);
+          writeToSession(sessionId, data).catch(console.error);
+        } else {
+          inputBuffer += data;
           writeToSession(sessionId, data).catch(console.error);
         }
       });

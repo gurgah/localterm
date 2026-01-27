@@ -103,6 +103,32 @@ When terminal is fullscreen/maximized, Claude detection fails - sessions show as
 
 See `DEVELOPMENT_TRACKER.md` for details.
 
+## Branches
+
+| Branch | Purpose |
+|--------|---------|
+| `master` | Stable release branch |
+| `feature/local-llm` | Local LLM integration (llama.cpp embedded + agent cards) |
+
+### feature/local-llm
+Embedded llama.cpp runtime via `llama-cpp-2` Rust crate. See `LOCAL_LLM_PLAN.md` for full implementation plan.
+
+**Key new files**:
+- `src-tauri/src/llm.rs` — LlmEngine (model load/unload, chat completion, streaming, auto-unload)
+- `src-tauri/src/llm_server.rs` — OpenAI-compatible HTTP server (Phase 3)
+- `src-tauri/src/model_manager.rs` — GGUF model download + cache
+- `src/lib/services/llmService.ts` — Frontend LLM service (Tauri IPC)
+- `src/lib/agents/` — Agent card system (TEXT for explanations, BASH for command suggestions)
+
+**Agent card types** (local LLM responses only, not Claude Code internal tools):
+- **BASH** (blue) — Suggested command with Run/Copy/Dismiss buttons
+- **TEXT** (gray) — Plain explanation with Dismiss button
+
+**Build requirement**: CMake (`brew install cmake` on macOS)
+
+### Immediate Next Step
+Wire `integration.ts` → `llmService.ts` so `processAgentInput()` and `triggerErrorRecovery()` actually call the local LLM backend (`/v1/chat/completions` or `/v1/messages`). Parse LLM response to produce `ToolType.BASH` (if it contains a command) or `ToolType.TEXT` (plain answer). Currently both functions return placeholder responses.
+
 ## Development
 
 ```bash

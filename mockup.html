@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LocalTerm LLM UI Mockup</title>
+<style>
+  :root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #1c2128;
+    --border: #30363d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --accent: #da7756;
+    --accent-hover: #e08a6b;
+    --success: #3fb950;
+    --error: #f85149;
+    --warning: #d29922;
+    --blue: #58a6ff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #000;
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+    gap: 60px;
+  }
+
+  h1 {
+    font-size: 24px;
+    color: var(--accent);
+    text-align: center;
+  }
+
+  h2 {
+    font-size: 18px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+  }
+
+  .mockup-section {
+    width: 100%;
+    max-width: 900px;
+  }
+
+  /* ─── Main App Layout ─── */
+  .app-frame {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    width: 100%;
+    height: 600px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .titlebar {
+    height: 36px;
+    background: var(--bg-primary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .traffic-lights {
+    display: flex;
+    gap: 8px;
+  }
+
+  .traffic-light {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+  .traffic-light.red { background: #ff5f57; }
+  .traffic-light.yellow { background: #febc2e; }
+  .traffic-light.green { background: #28c840; }
+
+  .titlebar-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .titlebar-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  .titlebar-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .titlebar-btn.gear {
+    font-size: 16px;
+  }
+
+  .app-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 8px;
+    padding: 8px;
+    min-height: 0;
+  }
+
+  .tile {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .tile.orchestrator { border-color: var(--accent); }
+  .tile.active { border-color: var(--success); }
+
+  .tile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .tile.orchestrator .tile-header { color: var(--accent); }
+  .tile.active .tile-header { color: var(--success); }
+
+  .tile-content {
+    flex: 1;
+    padding: 8px;
+    overflow: hidden;
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: 'SF Mono', Menlo, monospace;
+  }
+
+  /* ─── Status Bar ─── */
+  .status-bar {
+    height: 28px;
+    background: var(--bg-tertiary);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .status-bar:hover {
+    background: #232830;
+  }
+
+  .status-left, .status-center, .status-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .status-dot.ready { background: var(--success); }
+  .status-dot.idle { background: var(--text-secondary); }
+  .status-dot.generating { background: var(--accent); animation: pulse 1.5s infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .status-label { color: var(--text-secondary); }
+  .status-model { color: var(--text-primary); font-weight: 500; }
+  .status-server { color: var(--success); }
+  .status-gpu { color: var(--blue); }
+
+  /* ─── Settings Modal ─── */
+  .settings-overlay {
+    position: relative;
+    width: 100%;
+    max-width: 900px;
+    height: 580px;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+  }
+
+  .settings-modal {
+    width: 680px;
+    max-height: 520px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .settings-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .settings-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 18px;
+  }
+
+  .settings-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .settings-tabs {
+    width: 160px;
+    border-right: 1px solid var(--border);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .settings-tab {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border: none;
+    background: none;
+    text-align: left;
+  }
+
+  .settings-tab:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .settings-tab.active {
+    background: var(--bg-tertiary);
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .settings-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .setting-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .setting-group-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .setting-label {
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+
+  .setting-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  .toggle {
+    width: 36px;
+    height: 20px;
+    background: var(--border);
+    border-radius: 10px;
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .toggle.on {
+    background: var(--accent);
+  }
+
+  .toggle::after {
+    content: '';
+    width: 16px;
+    height: 16px;
+    background: white;
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s;
+  }
+
+  .toggle.on::after {
+    transform: translateX(16px);
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .slider {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    position: relative;
+  }
+
+  .slider-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+
+  .slider-value {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+    min-width: 36px;
+    text-align: right;
+  }
+
+  .select {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* ─── Model Cards ─── */
+  .model-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .model-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    gap: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .model-card:hover {
+    border-color: var(--accent);
+  }
+
+  .model-card.selected {
+    border-color: var(--accent);
+    background: rgba(218, 119, 86, 0.08);
+  }
+
+  .model-card.recommended {
+    position: relative;
+  }
+
+  .recommended-badge {
+    position: absolute;
+    top: -1px;
+    right: 12px;
+    background: var(--accent);
+    color: var(--bg-primary);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 0 0 4px 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .model-radio {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .model-card.selected .model-radio {
+    border-color: var(--accent);
+  }
+
+  .model-card.selected .model-radio::after {
+    content: '';
+    width: 10px;
+    height: 10px;
+    background: var(--accent);
+    border-radius: 50%;
+  }
+
+  .model-info {
+    flex: 1;
+  }
+
+  .model-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .model-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  .model-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  .model-tags {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+  }
+
+  .tag {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(88, 166, 255, 0.15);
+    color: var(--blue);
+    font-weight: 500;
+  }
+
+  .tag.tool { background: rgba(63, 185, 80, 0.15); color: var(--success); }
+
+  .model-action {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .download-btn {
+    background: var(--accent);
+    color: var(--bg-primary);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .download-btn:hover { background: var(--accent-hover); }
+
+  .download-btn.loaded {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--success);
+    cursor: default;
+  }
+
+  .model-size {
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+
+  /* ─── Advanced Section ─── */
+  .advanced-section {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .advanced-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .advanced-header:hover {
+    color: var(--text-primary);
+  }
+
+  .advanced-body {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .warning-banner {
+    background: rgba(210, 153, 34, 0.1);
+    border: 1px solid rgba(210, 153, 34, 0.3);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11px;
+    color: var(--warning);
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .text-input {
+    flex: 1;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 12px;
+    color: var(--text-primary);
+    outline: none;
+  }
+
+  .text-input:focus {
+    border-color: var(--accent);
+  }
+
+  .browse-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    padding: 7px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .browse-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ─── Orchestrator with Agent Responses ─── */
+  .orch-content {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .orch-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .orch-badge {
+    background: var(--accent);
+    color: var(--bg-primary);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 8px;
+  }
+
+  .agent-card {
+    background: var(--bg-primary);
+    border-radius: 6px;
+    padding: 8px 10px;
+    border-left: 3px solid #ccc;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .agent-card.bash { border-left-color: #58a6ff; }
+
+  .agent-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+
+  .tool-tag {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    background: rgba(204, 204, 204, 0.15);
+    color: #ccc;
+  }
+
+  .tool-tag.bash { background: rgba(88, 166, 255, 0.15); color: #58a6ff; }
+
+  .agent-card-content {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .agent-card-content code {
+    background: var(--bg-tertiary);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 10px;
+    color: var(--text-primary);
+  }
+
+  .agent-card-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .agent-action-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 10px;
+    color: var(--accent);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .agent-action-btn:hover {
+    border-color: var(--accent);
+    background: rgba(218, 119, 86, 0.1);
+  }
+
+  .agent-action-btn.dismiss {
+    color: var(--text-secondary);
+  }
+
+  .agent-action-btn.dismiss:hover {
+    border-color: var(--text-secondary);
+    background: var(--bg-primary);
+  }
+
+  /* ─── First Run Card ─── */
+  .first-run-card {
+    background: var(--bg-primary);
+    border: 1px dashed var(--accent);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .first-run-icon {
+    font-size: 28px;
+    opacity: 0.6;
+  }
+
+  .first-run-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .first-run-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .first-run-btn {
+    background: var(--accent);
+    color: var(--bg-primary);
+    border: none;
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+
+  /* ─── Download Toast ─── */
+  .download-toast {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    z-index: 100;
+    min-width: 360px;
+  }
+
+  .toast-label {
+    color: var(--text-primary);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .toast-progress {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .toast-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    width: 67%;
+  }
+
+  .toast-info {
+    display: flex;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .toast-cancel {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+  }
+
+  .toast-cancel:hover { color: var(--error); }
+
+  .note {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+    font-style: italic;
+    margin-top: -8px;
+  }
+</style>
+</head>
+<body>
+
+<h1>LocalTerm — Local LLM UI Mockup</h1>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 1: Main App with Status Bar + Gear Button -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<div class="mockup-section">
+  <h2>1. Main App Layout (with Status Bar + Settings Gear)</h2>
+  <div class="app-frame" style="position: relative;">
+    <!-- Download Toast -->
+    <div class="download-toast">
+      <span class="toast-label">Downloading Qwen3 4B...</span>
+      <div class="toast-progress"><div class="toast-progress-fill"></div></div>
+      <div class="toast-info">
+        <span>67.3%</span>
+        <span>42.1 MB/s</span>
+        <span>~18s left</span>
+      </div>
+      <button class="toast-cancel">&times;</button>
+    </div>
+
+    <div class="titlebar">
+      <div class="traffic-lights">
+        <div class="traffic-light red"></div>
+        <div class="traffic-light yellow"></div>
+        <div class="traffic-light green"></div>
+      </div>
+      <div class="titlebar-actions">
+        <button class="titlebar-btn">+</button>
+        <button class="titlebar-btn gear" title="Settings">&#9881;</button>
+      </div>
+    </div>
+
+    <div class="app-grid">
+      <!-- Orchestrator -->
+      <div class="tile orchestrator">
+        <div class="tile-header">
+          <span>&#9788; Orchestrator</span>
+          <span style="font-size:10px">&#9634;</span>
+        </div>
+        <div class="tile-content orch-content">
+          <div class="orch-section-title">
+            Agent Responses <span class="orch-badge">2</span>
+          </div>
+
+          <div class="agent-card bash">
+            <div class="agent-card-header">
+              <span class="tool-tag bash">BASH</span>
+              <span style="font-size:10px; color:var(--text-secondary)">claude-1</span>
+            </div>
+            <div class="agent-card-content">
+              <code>find . -type f -size +100M -exec ls -lh {} \;</code>
+            </div>
+            <div class="agent-card-actions">
+              <button class="agent-action-btn" style="color:#58a6ff;">&#9654; Run</button>
+              <button class="agent-action-btn">&#x2398; Copy</button>
+              <button class="agent-action-btn dismiss">Dismiss</button>
+            </div>
+          </div>
+
+          <div class="agent-card">
+            <div class="agent-card-header">
+              <span class="tool-tag">TEXT</span>
+              <span style="font-size:10px; color:var(--text-secondary)">claude-2</span>
+            </div>
+            <div class="agent-card-content">
+              Port 3000 is already in use. Kill the existing process or use a different port.
+            </div>
+            <div class="agent-card-actions">
+              <button class="agent-action-btn dismiss">Dismiss</button>
+            </div>
+          </div>
+
+          <div class="orch-section-title" style="margin-top:4px">
+            Claude Sessions <span class="orch-badge" style="background:var(--text-secondary)">2</span>
+          </div>
+          <div style="font-size:11px; color:var(--text-secondary); padding:4px 8px; background:var(--bg-primary); border-radius:4px;">
+            claude-1 <span style="color:#3fb950">Working...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terminal 1 -->
+      <div class="tile terminal active">
+        <div class="tile-header">
+          <span>&#9656; claude-1</span>
+          <span style="font-size:10px">&#9634; &times;</span>
+        </div>
+        <div class="tile-content" style="color:#3fb950; font-size:11px;">
+          <div style="color:var(--text-secondary)">$ <span style="color:#58a6ff">? find large files</span></div>
+          <div style="color:#8b949e; margin-top:2px">[Agent] Processing query...</div>
+          <div style="margin-top:8px; color:#e6edf3">~/project $</div>
+        </div>
+      </div>
+
+      <!-- Terminal 2 -->
+      <div class="tile terminal">
+        <div class="tile-header">
+          <span>&#9656; claude-2</span>
+          <span style="font-size:10px">&#9634; &times;</span>
+        </div>
+        <div class="tile-content">
+          ~/project $ npm run build<br>
+          <span style="color:var(--error)">npm ERR! ENOENT package.json</span>
+        </div>
+      </div>
+
+      <!-- Terminal 3 -->
+      <div class="tile terminal">
+        <div class="tile-header">
+          <span>&#9656; shell-1</span>
+          <span style="font-size:10px">&#9634; &times;</span>
+        </div>
+        <div class="tile-content">
+          ~/project $ git status<br>
+          On branch feature/local-llm
+        </div>
+      </div>
+
+      <!-- Empty terminal -->
+      <div class="tile terminal">
+        <div class="tile-header">
+          <span>&#9656; Click to start</span>
+          <span style="font-size:10px">&#9634; &times;</span>
+        </div>
+        <div class="tile-content" style="display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px;">
+          <div style="opacity:0.3; font-size:24px;">&#9656;</div>
+          <button style="background:var(--accent); border:none; color:var(--bg-primary); padding:8px 16px; border-radius:6px; font-size:12px; cursor:pointer;">Start Claude</button>
+          <button style="background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-secondary); padding:6px 14px; border-radius:6px; font-size:12px; cursor:pointer;">Command Line</button>
+        </div>
+      </div>
+
+      <!-- Another tile -->
+      <div class="tile terminal">
+        <div class="tile-header">
+          <span>&#9656; claude-3</span>
+          <span style="font-size:10px">&#9634; &times;</span>
+        </div>
+        <div class="tile-content" style="display:flex; align-items:center; justify-content:center; color:var(--success); font-size:11px;">
+          &#10003; Ready — Waiting for input
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar" title="Click to open Settings">
+      <div class="status-left">
+        <span class="status-dot ready"></span>
+        <span class="status-label">LLM: Ready</span>
+      </div>
+      <div class="status-center">
+        <span class="status-model">Qwen3 4B Q4_K_M</span>
+      </div>
+      <div class="status-right">
+        <span class="status-server">API: localhost:11435</span>
+        <span style="color:var(--border)">|</span>
+        <span class="status-gpu">Metal</span>
+      </div>
+    </div>
+  </div>
+  <p class="note">Gear button (top-right) opens Settings. Status bar (bottom) shows LLM state — click to open Settings &gt; LLM tab.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 2: Settings Modal — LLM Tab -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<div class="mockup-section">
+  <h2>2. Settings Modal — Local LLM Tab</h2>
+  <div class="settings-overlay">
+    <div class="settings-modal">
+      <div class="settings-header">
+        <h3>Settings</h3>
+        <button class="settings-close">&times;</button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-tabs">
+          <button class="settings-tab">General</button>
+          <button class="settings-tab active">Local LLM</button>
+        </div>
+        <div class="settings-content">
+          <!-- Master toggle -->
+          <div class="setting-group">
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Enable Local LLM</div>
+                <div class="setting-desc">Run AI models locally using llama.cpp</div>
+              </div>
+              <div class="toggle on"></div>
+            </div>
+          </div>
+
+          <!-- Model Selection -->
+          <div class="setting-group">
+            <div class="setting-group-title">Verified Models</div>
+            <div class="model-cards">
+              <!-- Qwen3 4B — selected & loaded -->
+              <div class="model-card selected recommended">
+                <div class="recommended-badge">Recommended</div>
+                <div class="model-radio"></div>
+                <div class="model-info">
+                  <div class="model-name">Qwen3 4B</div>
+                  <div class="model-meta">Q4_K_M &middot; 4096 ctx</div>
+                  <div class="model-desc">Fast, general-purpose. Best for command suggestions and error detection.</div>
+                  <div class="model-tags">
+                    <span class="tag">fast</span>
+                    <span class="tag">general</span>
+                    <span class="tag tool">tool-calling</span>
+                  </div>
+                </div>
+                <div class="model-action">
+                  <button class="download-btn loaded">&#10003; Loaded</button>
+                  <span class="model-size">2.3 GB</span>
+                </div>
+              </div>
+
+              <!-- Phi-3.5 Mini -->
+              <div class="model-card">
+                <div class="model-radio"></div>
+                <div class="model-info">
+                  <div class="model-name">Phi-3.5 Mini 3.8B</div>
+                  <div class="model-meta">Q4_K_M &middot; 4096 ctx</div>
+                  <div class="model-desc">Strong reasoning for its size. Good at code analysis tasks.</div>
+                  <div class="model-tags">
+                    <span class="tag">reasoning</span>
+                    <span class="tag">code</span>
+                  </div>
+                </div>
+                <div class="model-action">
+                  <button class="download-btn">Download</button>
+                  <span class="model-size">2.2 GB</span>
+                </div>
+              </div>
+
+              <!-- Llama 3.2 3B -->
+              <div class="model-card">
+                <div class="model-radio"></div>
+                <div class="model-info">
+                  <div class="model-name">Llama 3.2 3B</div>
+                  <div class="model-meta">Q4_K_M &middot; 8192 ctx</div>
+                  <div class="model-desc">Meta's latest small model. Balanced speed and quality.</div>
+                  <div class="model-tags">
+                    <span class="tag">balanced</span>
+                    <span class="tag tool">tool-calling</span>
+                  </div>
+                </div>
+                <div class="model-action">
+                  <button class="download-btn">Download</button>
+                  <span class="model-size">1.9 GB</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Advanced / Custom Model -->
+          <div class="setting-group">
+            <div class="advanced-section">
+              <div class="advanced-header">
+                <span>Custom Model (Advanced)</span>
+                <span>&#9660;</span>
+              </div>
+              <div class="advanced-body">
+                <div class="warning-banner">
+                  &#9888; Custom models are not verified by LocalTerm. Tool calling and Claude Code integration may not work correctly.
+                </div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-bottom:2px;">GGUF File Path</div>
+                <div class="input-row">
+                  <input class="text-input" placeholder="/path/to/model.gguf" value="">
+                  <button class="browse-btn">Browse</button>
+                </div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-bottom:2px; margin-top:4px;">HuggingFace URL</div>
+                <div class="input-row">
+                  <input class="text-input" placeholder="https://huggingface.co/.../model.gguf" value="">
+                  <button class="browse-btn">Download</button>
+                </div>
+                <div class="setting-row" style="margin-top:4px;">
+                  <div>
+                    <div class="setting-label" style="font-size:12px;">Enable Tool Calling</div>
+                    <div class="setting-desc">Turn on if your model supports Anthropic Messages API tool calling format</div>
+                  </div>
+                  <div class="toggle"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- GPU Settings -->
+          <div class="setting-group">
+            <div class="setting-group-title">GPU Settings</div>
+            <div class="setting-row">
+              <div class="setting-label">GPU Layers</div>
+              <div class="slider-row" style="width:200px">
+                <div class="slider"><div class="slider-fill" style="width:100%"></div></div>
+                <span class="slider-value">All</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">Context Length</div>
+              <select class="select">
+                <option>2048</option>
+                <option selected>4096</option>
+                <option>8192</option>
+                <option>16384</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Auto Management -->
+          <div class="setting-group">
+            <div class="setting-group-title">Auto Management</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Auto-load on startup</div>
+                <div class="setting-desc">Load the selected model when the app starts</div>
+              </div>
+              <div class="toggle on"></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">Auto-unload after idle</div>
+              <div class="slider-row" style="width:180px">
+                <div class="slider"><div class="slider-fill" style="width:7%"></div></div>
+                <span class="slider-value">2 min</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Claude Code Integration -->
+          <div class="setting-group">
+            <div class="setting-group-title">Claude Code Integration</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Use local model for Claude Code</div>
+                <div class="setting-desc">New terminal sessions will use the local model instead of Anthropic API</div>
+              </div>
+              <div class="toggle on"></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--success); padding:6px 10px; background:rgba(63,185,80,0.08); border-radius:6px;">
+              <span class="status-dot ready" style="width:6px; height:6px;"></span>
+              Server running on localhost:11435
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 3: Settings Modal — General Tab -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<div class="mockup-section">
+  <h2>3. Settings Modal — General Tab</h2>
+  <div class="settings-overlay">
+    <div class="settings-modal">
+      <div class="settings-header">
+        <h3>Settings</h3>
+        <button class="settings-close">&times;</button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-tabs">
+          <button class="settings-tab active">General</button>
+          <button class="settings-tab">Local LLM</button>
+        </div>
+        <div class="settings-content">
+          <div class="setting-group">
+            <div class="setting-group-title">Appearance</div>
+            <div class="setting-row">
+              <div class="setting-label">Font Size</div>
+              <div class="slider-row" style="width:180px">
+                <div class="slider"><div class="slider-fill" style="width:31%"></div></div>
+                <span class="slider-value">13px</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-group-title">Terminal</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Default Working Directory</div>
+                <div class="setting-desc">New terminals will start in this directory</div>
+              </div>
+            </div>
+            <div class="input-row">
+              <input class="text-input" placeholder="~/Projects" value="/Users/drs/Code">
+              <button class="browse-btn">Browse</button>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Auto-start Claude on new terminal</div>
+                <div class="setting-desc">Automatically run "claude" when opening a new terminal</div>
+              </div>
+              <div class="toggle"></div>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-group-title">Orchestrator</div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Show Orchestrator Panel</div>
+                <div class="setting-desc">Display the orchestrator tile in the grid</div>
+              </div>
+              <div class="toggle on"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 4: First-Run Experience -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<div class="mockup-section">
+  <h2>4. First-Run Experience (Orchestrator — No Model Downloaded)</h2>
+  <div class="app-frame" style="height:300px;">
+    <div class="titlebar">
+      <div class="traffic-lights">
+        <div class="traffic-light red"></div>
+        <div class="traffic-light yellow"></div>
+        <div class="traffic-light green"></div>
+      </div>
+      <div class="titlebar-actions">
+        <button class="titlebar-btn">+</button>
+        <button class="titlebar-btn gear">&#9881;</button>
+      </div>
+    </div>
+    <div class="app-grid" style="grid-template-columns: 1fr 2fr;">
+      <div class="tile orchestrator">
+        <div class="tile-header">
+          <span>&#9788; Orchestrator</span>
+          <span style="font-size:10px">&#9634;</span>
+        </div>
+        <div class="tile-content orch-content" style="justify-content:center;">
+          <div class="first-run-card">
+            <div class="first-run-icon">&#9889;</div>
+            <div class="first-run-title">Enable Local AI</div>
+            <div class="first-run-desc">Download a model to enable local AI features like<br>command suggestions, error recovery, and more.</div>
+            <button class="first-run-btn">Download Qwen3 4B (2.3 GB)</button>
+          </div>
+        </div>
+      </div>
+      <div class="tile terminal active">
+        <div class="tile-header">
+          <span>&#9656; claude-1</span>
+          <span style="font-size:10px">&#9634; &times;</span>
+        </div>
+        <div class="tile-content" style="display:flex; align-items:center; justify-content:center; color:var(--success); font-size:11px;">
+          &#10003; claude &mdash; Ready
+        </div>
+      </div>
+    </div>
+    <div class="status-bar">
+      <div class="status-left">
+        <span class="status-dot idle"></span>
+        <span class="status-label">LLM: No model loaded</span>
+      </div>
+      <div class="status-center"></div>
+      <div class="status-right">
+        <span style="color:var(--text-secondary)">Click to set up</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SECTION 5: Agent Response Cards (Detail View) -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<div class="mockup-section">
+  <h2>5. Agent Response Cards — Local LLM Suggestions</h2>
+  <div style="background: var(--bg-secondary); border-radius:8px; padding:16px; display:flex; flex-direction:column; gap:10px;">
+
+    <!-- Bash suggestion: command to run -->
+    <div class="agent-card bash">
+      <div class="agent-card-header">
+        <span class="tool-tag bash">BASH</span>
+        <span style="font-size:10px; color:var(--text-secondary)">claude-1 &middot; 3s ago</span>
+      </div>
+      <div class="agent-card-content">
+        <code>find . -type f -size +100M -exec ls -lh {} \;</code>
+        <div style="margin-top:4px; color:var(--text-secondary); font-size:10px;">Find all files larger than 100MB and show their sizes.</div>
+      </div>
+      <div class="agent-card-actions">
+        <button class="agent-action-btn" style="color:#58a6ff;">&#9654; Run</button>
+        <button class="agent-action-btn">&#x2398; Copy</button>
+        <button class="agent-action-btn dismiss">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- Bash suggestion: error recovery -->
+    <div class="agent-card bash">
+      <div class="agent-card-header">
+        <span class="tool-tag bash">BASH</span>
+        <span style="font-size:10px; color:var(--text-secondary)">claude-2 &middot; 5s ago</span>
+      </div>
+      <div class="agent-card-content">
+        <code>lsof -i :3000 | awk 'NR>1{print $2}' | xargs kill</code>
+        <div style="margin-top:4px; color:var(--text-secondary); font-size:10px;">Port 3000 is already in use. This kills the process holding it.</div>
+      </div>
+      <div class="agent-card-actions">
+        <button class="agent-action-btn" style="color:#58a6ff;">&#9654; Run</button>
+        <button class="agent-action-btn">&#x2398; Copy</button>
+        <button class="agent-action-btn dismiss">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- Text: plain explanation -->
+    <div class="agent-card">
+      <div class="agent-card-header">
+        <span class="tool-tag">TEXT</span>
+        <span style="font-size:10px; color:var(--text-secondary)">claude-1 &middot; 8s ago</span>
+      </div>
+      <div class="agent-card-content">
+        The <code>EACCES</code> error means the current user doesn't have write permissions to <code>/usr/local/lib</code>. Consider using <code>nvm</code> to manage Node.js installations in your home directory instead.
+      </div>
+      <div class="agent-card-actions">
+        <button class="agent-action-btn dismiss">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- Text: general answer -->
+    <div class="agent-card">
+      <div class="agent-card-header">
+        <span class="tool-tag">TEXT</span>
+        <span style="font-size:10px; color:var(--text-secondary)">? what does this error mean</span>
+      </div>
+      <div class="agent-card-content">
+        The segfault in <code>llama_decode</code> typically means the model file is corrupted or the context size exceeds available memory. Try re-downloading the GGUF file or reducing <code>n_ctx</code>.
+      </div>
+      <div class="agent-card-actions">
+        <button class="agent-action-btn dismiss">Dismiss</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p style="color:var(--text-secondary); font-size:12px; margin-top:20px; margin-bottom:40px;">
+  Mockup generated for LocalTerm Local LLM Integration — feature/local-llm branch
+</p>
+
+</body>
+</html>
