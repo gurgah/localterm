@@ -1,16 +1,46 @@
 import { writable } from "svelte/store";
 
+export interface LlmSettings {
+  enabled: boolean;
+  modelTier: "verified" | "custom";
+  selectedVerifiedModel: string; // verified model ID
+  customModelPath: string;
+  toolCallingEnabled: boolean;
+  modelPath: string; // resolved path (set after download/selection)
+  autoLoadModel: boolean;
+  autoUnloadMinutes: number;
+  useForClaudeCode: boolean;
+  gpuLayers: number; // -1 = all
+  contextLength: number;
+}
+
 export interface Settings {
   defaultLocation: string;
   showOrchestrator: boolean;
   fontSize: number;
+  llm: LlmSettings;
 }
 
 const STORAGE_KEY = "localterm-settings";
+const DEFAULT_LLM_SETTINGS: LlmSettings = {
+  enabled: false,
+  modelTier: "verified",
+  selectedVerifiedModel: "qwen3-4b-q4km",
+  customModelPath: "",
+  toolCallingEnabled: true,
+  modelPath: "",
+  autoLoadModel: false,
+  autoUnloadMinutes: 2,
+  useForClaudeCode: false,
+  gpuLayers: -1,
+  contextLength: 4096,
+};
+
 const DEFAULT_SETTINGS: Settings = {
   defaultLocation: "",
   showOrchestrator: true,
   fontSize: 13,
+  llm: DEFAULT_LLM_SETTINGS,
 };
 
 function loadSettings(): Settings {
@@ -81,6 +111,14 @@ function createSettingsStore() {
         const next = { ...s, fontSize: 13 };
         saveSettings(next);
         return next;
+      });
+    },
+
+    updateLlm: (partial: Partial<LlmSettings>) => {
+      update((s) => {
+        const newSettings = { ...s, llm: { ...s.llm, ...partial } };
+        saveSettings(newSettings);
+        return newSettings;
       });
     },
 

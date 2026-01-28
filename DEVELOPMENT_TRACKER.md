@@ -63,6 +63,12 @@
 
 ---
 
+## TODO
+
+- [ ] **macOS DMG**: Add Applications shortcut (use `create-dmg` tool)
+
+---
+
 ## Roadmap
 
 ### Phase 2 (Planned)

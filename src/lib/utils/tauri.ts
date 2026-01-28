@@ -67,6 +67,22 @@ export async function isClaudeRunning(sessionId: string): Promise<boolean> {
   return invoke("is_claude_running", { sessionId });
 }
 
+export async function createSessionWithEnv(
+  sessionId: string,
+  cwd: string | null,
+  cols: number,
+  rows: number,
+  envVars: [string, string][]
+): Promise<void> {
+  return invoke("create_session_with_env", {
+    sessionId,
+    cwd,
+    cols,
+    rows,
+    envVars,
+  });
+}
+
 // Event listeners
 export function onPtyOutput(
   callback: (output: PtyOutput) => void
@@ -82,6 +98,19 @@ export function onPtyExit(
   return listen<PtyExit>("pty-exit", (event) => {
     callback(event.payload);
   });
+}
+
+// File dialog
+export async function openFileDialog(
+  filters?: { name: string; extensions: string[] }[]
+): Promise<string | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const result = await open({
+    multiple: false,
+    filters,
+  });
+  if (result && typeof result === "string") return result;
+  return null;
 }
 
 // Check if running in Tauri

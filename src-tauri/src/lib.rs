@@ -1,9 +1,13 @@
 mod commands;
+mod llm;
+mod llm_server;
+mod model_manager;
 mod pty;
 
 use commands::AppState;
+use llm::LlmEngine;
 use pty::PtyManager;
-use std::sync::Arc;
+use std::sync::{atomic::AtomicBool, Arc};
 use tauri::{
     menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
     Emitter, Listener, Manager,
@@ -13,6 +17,16 @@ use serde_json;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let pty_manager = Arc::new(PtyManager::new());
+    let llm_engine = Arc::new(LlmEngine::new());
+
+    // Start auto-unload timer (checks every 30s, unloads after 2min idle)
+    let llm_engine_timer = llm_engine.clone();
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            llm_engine_timer.check_auto_unload(120);
+        }
+    });
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -130,15 +144,34 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .manage(AppState { pty_manager })
+        .manage(AppState {
+            pty_manager,
+            llm_engine,
+            llm_server_running: Arc::new(AtomicBool::new(false)),
+            tool_calling_enabled: Arc::new(AtomicBool::new(true)),
+        })
         .invoke_handler(tauri::generate_handler![
             commands::create_session,
+            commands::create_session_with_env,
             commands::write_to_session,
             commands::resize_session,
             commands::close_session,
             commands::is_claude_running,
             commands::get_home_dir,
             commands::get_default_shell,
+            commands::llm_load_model,
+            commands::llm_unload_model,
+            commands::llm_status,
+            commands::llm_chat,
+            commands::llm_classify,
+            commands::llm_stop_generation,
+            commands::llm_download_model,
+            commands::llm_list_models,
+            commands::llm_models_dir,
+            commands::llm_start_server,
+            commands::llm_server_status,
+            commands::llm_set_tool_calling,
+            commands::llm_get_tool_calling,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

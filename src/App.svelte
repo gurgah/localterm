@@ -10,6 +10,21 @@
   import { exit } from "@tauri-apps/plugin-process";
   import { open } from "@tauri-apps/plugin-dialog";
   import { open as openUrl } from "@tauri-apps/plugin-shell";
+  import { llmService } from "./lib/services/llmService";
+  import { llmStore, isModelLoaded } from "./lib/stores/llm";
+  import SettingsModal from "./lib/components/SettingsModal.svelte";
+
+  let showSettings: boolean = false;
+  let settingsTab: "general" | "llm" = "general";
+
+  function openSettings(tab: "general" | "llm" = "general") {
+    settingsTab = tab;
+    showSettings = true;
+  }
+
+  function closeSettings() {
+    showSettings = false;
+  }
 
   interface Tile {
     id: string;
@@ -394,6 +409,22 @@
     await updateMenuLocation(initialSettings.defaultLocation);
     await syncOrchestratorMenu(initialSettings.showOrchestrator);
 
+    // Auto-start LLM engine and server if configured
+    if (initialSettings.llm.enabled) {
+      try {
+        // Load model if auto-load is on and model path is set
+        if (initialSettings.llm.autoLoadModel && initialSettings.llm.modelPath) {
+          await llmService.loadModel(initialSettings.llm.modelPath);
+        }
+        // Start OpenAI-compatible server if useForClaudeCode is on
+        if (initialSettings.llm.useForClaudeCode) {
+          await llmService.startServer();
+        }
+      } catch (e) {
+        console.error("LLM auto-start error:", e);
+      }
+    }
+
     // Listen for menu events from Rust
     const unlistenDefaultLocation = await listen("menu-default-location", async () => {
       const selected = await open({
@@ -454,6 +485,12 @@
         </svg>
       </button>
     {/if}
+    <button class="titlebar-add" onclick={() => openSettings()} title="Settings">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
   </div>
   <div class="grid" class:has-expanded={expandedTile !== null} style={gridStyle}>
     {#each visibleTiles as tile (tile.id)}
@@ -641,6 +678,30 @@
       </div>
     </div>
   {/if}
+
+  <!-- LLM Status Bar -->
+  {#if $settings.llm.enabled}
+    <div class="llm-status-bar" onclick={() => openSettings("llm")} title="Click to open LLM settings">
+      <div class="status-bar-left">
+        <span class="status-bar-dot" class:ready={$llmStore.status === 'ready'} class:generating={$llmStore.status === 'generating'} class:loading={$llmStore.status === 'loading'} class:error={$llmStore.status === 'error'}></span>
+        <span class="status-bar-label">LLM: {$llmStore.status === 'ready' ? 'Ready' : $llmStore.status === 'generating' ? 'Generating...' : $llmStore.status === 'loading' ? 'Loading...' : $llmStore.status === 'error' ? 'Error' : 'Idle'}</span>
+      </div>
+      <div class="status-bar-center">
+        {#if $llmStore.modelName}
+          <span class="status-bar-model">{$llmStore.modelName}</span>
+        {:else}
+          <span class="status-bar-model" style="opacity:0.5">No model loaded</span>
+        {/if}
+      </div>
+      <div class="status-bar-right">
+        {#if $settings.llm.useForClaudeCode}
+          <span class="status-bar-server">API: localhost:11435</span>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
+  <SettingsModal show={showSettings} initialTab={settingsTab} onClose={closeSettings} />
 </div>
 
 <style>
@@ -1104,6 +1165,64 @@
     background: var(--border);
     margin: 4px 0;
   }
+
+  /* LLM Status Bar */
+  .llm-status-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    background: var(--bg-tertiary);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-size: 11px;
+    cursor: pointer;
+    z-index: 50;
+    -webkit-app-region: no-drag;
+  }
+
+  .llm-status-bar:hover {
+    background: #232830;
+  }
+
+  .app:has(.llm-status-bar) .grid {
+    height: calc(100% - 36px - 28px);
+  }
+
+  .app:has(.llm-status-bar):has(.minimized-bar) .grid {
+    height: calc(100% - 36px - 40px - 28px);
+  }
+
+  .status-bar-left, .status-bar-center, .status-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .status-bar-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+  }
+
+  .status-bar-dot.ready { background: #3fb950; }
+  .status-bar-dot.generating { background: var(--accent); animation: statusPulse 1.5s infinite; }
+  .status-bar-dot.loading { background: #d29922; animation: statusPulse 1s infinite; }
+  .status-bar-dot.error { background: #ef4444; }
+
+  @keyframes statusPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .status-bar-label { color: var(--text-secondary); }
+  .status-bar-model { color: var(--text-primary); font-weight: 500; }
+  .status-bar-server { color: #3fb950; }
 
   /* Responsive grid - adjust columns based on tile count */
   @media (max-width: 900px) {

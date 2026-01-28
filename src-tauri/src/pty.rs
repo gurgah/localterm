@@ -45,6 +45,30 @@ impl PtyManager {
         cols: u16,
         rows: u16,
     ) -> Result<(), String> {
+        self.create_session_inner(app, session_id, cwd, cols, rows, None)
+    }
+
+    pub fn create_session_with_env(
+        &self,
+        app: AppHandle,
+        session_id: String,
+        cwd: Option<String>,
+        cols: u16,
+        rows: u16,
+        env_vars: Vec<(String, String)>,
+    ) -> Result<(), String> {
+        self.create_session_inner(app, session_id, cwd, cols, rows, Some(env_vars))
+    }
+
+    fn create_session_inner(
+        &self,
+        app: AppHandle,
+        session_id: String,
+        cwd: Option<String>,
+        cols: u16,
+        rows: u16,
+        extra_env: Option<Vec<(String, String)>>,
+    ) -> Result<(), String> {
         let pty_system = native_pty_system();
 
         let pair = pty_system
@@ -86,6 +110,13 @@ impl PtyManager {
         cmd.env_remove("APPIMAGE");
         cmd.env_remove("APPDIR");
         cmd.env_remove("OWD");
+
+        // Inject extra environment variables (e.g. ANTHROPIC_BASE_URL for local LLM)
+        if let Some(env_vars) = extra_env {
+            for (key, value) in env_vars {
+                cmd.env(key, value);
+            }
+        }
 
         let child = pair
             .slave
