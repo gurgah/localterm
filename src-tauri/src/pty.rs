@@ -198,10 +198,9 @@ impl PtyManager {
                 .writer
                 .flush()
                 .map_err(|e| format!("Failed to flush PTY: {}", e))?;
-            Ok(())
-        } else {
-            Err(format!("Session not found: {}", session_id))
         }
+        // Silently ignore missing sessions (race condition during cleanup)
+        Ok(())
     }
 
     pub fn resize(&self, session_id: &str, cols: u16, rows: u16) -> Result<(), String> {
@@ -217,19 +216,19 @@ impl PtyManager {
                     pixel_height: 0,
                 })
                 .map_err(|e| format!("Failed to resize PTY: {}", e))?;
-            Ok(())
-        } else {
-            Err(format!("Session not found: {}", session_id))
         }
+        // Silently ignore missing sessions (race condition during cleanup)
+        Ok(())
     }
 
     /// Check if a "claude" process is running as a descendant of the session's shell.
     /// Uses `pgrep -P <pid>` to walk the process tree.
     pub fn is_claude_running(&self, session_id: &str) -> Result<bool, String> {
         let sessions = self.sessions.lock();
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| format!("Session not found: {}", session_id))?;
+        let session = match sessions.get(session_id) {
+            Some(s) => s,
+            None => return Ok(false), // Session gone, not an error
+        };
 
         let shell_pid = session
             .shell_pid

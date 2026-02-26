@@ -16,7 +16,14 @@
     "core:window:allow-unmaximize",
     "core:window:allow-is-maximized",
     "shell:default",
-    "shell:allow-open",
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        { "url": "https://**" },
+        { "url": "http://**" },
+        { "url": "mailto:**" }
+      ]
+    },
     "dialog:default",
     "process:default"
   ]

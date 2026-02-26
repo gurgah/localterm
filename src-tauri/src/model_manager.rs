@@ -1,6 +1,8 @@
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 
 #[derive(Clone, serde::Serialize)]
@@ -12,17 +14,18 @@ pub struct DownloadProgress {
     pub speed_mbps: f64,
 }
 
-/// Default model: Qwen3-4B Q4_K_M GGUF from HuggingFace
+/// Default model: Qwen3-4B Instruct 2507 Q4_K_M GGUF from HuggingFace
 pub const DEFAULT_MODEL_URL: &str =
-    "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/qwen3-4b-q4_k_m.gguf";
-pub const DEFAULT_MODEL_FILENAME: &str = "qwen3-4b-q4_k_m.gguf";
+    "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+pub const DEFAULT_MODEL_FILENAME: &str = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
 
-/// Download a GGUF model file with progress reporting
+/// Download a GGUF model file with progress reporting and cancellation support
 pub async fn download_model(
     app: AppHandle,
     url: &str,
     dest_dir: &Path,
     filename: Option<&str>,
+    cancel_flag: Arc<AtomicBool>,
 ) -> Result<PathBuf, String> {
     let fname = filename.unwrap_or_else(|| {
         url.rsplit('/')
@@ -88,6 +91,12 @@ pub async fn download_model(
     let start_time = std::time::Instant::now();
 
     while let Some(chunk) = stream.next().await {
+        // Check cancellation flag
+        if cancel_flag.load(Ordering::SeqCst) {
+            eprintln!("[ModelManager] Download cancelled (paused). Partial file kept at {:?}", temp_path);
+            return Err("Download cancelled".to_string());
+        }
+
         let chunk = chunk.map_err(|e| format!("Download stream error: {}", e))?;
         tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
             .await
@@ -130,6 +139,28 @@ pub async fn download_model(
     );
 
     Ok(dest_path)
+}
+
+/// Cancel and clean up a partial download (delete .part file)
+pub fn cancel_and_cleanup(dest_dir: &Path, url: &str) {
+    let fname = url.rsplit('/').next().unwrap_or("model.gguf");
+    let temp_path = dest_dir.join(format!("{}.part", fname));
+    if temp_path.exists() {
+        if let Err(e) = std::fs::remove_file(&temp_path) {
+            eprintln!("[ModelManager] Failed to remove partial download: {}", e);
+        } else {
+            eprintln!("[ModelManager] Removed partial download: {:?}", temp_path);
+        }
+    }
+}
+
+/// Delete a downloaded model file
+pub fn delete_model(path: &Path) -> Result<(), String> {
+    if path.exists() {
+        std::fs::remove_file(path).map_err(|e| format!("Failed to delete model: {}", e))?;
+        eprintln!("[ModelManager] Deleted model: {:?}", path);
+    }
+    Ok(())
 }
 
 /// Verify a model file's SHA256 checksum

@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { onMount, onDestroy } from "svelte";
   import { settings } from "../stores/settings";
-  import { llmStore, isModelLoaded } from "../stores/llm";
+  import { llmStore, isModelLoaded, isDownloading } from "../stores/llm";
   import { llmService } from "../services/llmService";
   import { VERIFIED_MODELS, getVerifiedModel } from "../data/verifiedModels";
   import { openFileDialog } from "../utils/tauri";
@@ -14,8 +15,52 @@
   let customHfUrl: string = "";
   let downloadingCustom: boolean = false;
 
+  // Model file state — checked on open
+  let modelFileExists: Record<string, string | null> = {};
+  let hasPartial: Record<string, boolean> = {};
+
+  let unlistenProgress: (() => void) | null = null;
+
   $: if (show) {
     activeTab = initialTab;
+    checkModelFiles();
+  }
+
+  onMount(() => {
+    // Listen for download progress events
+    llmService.onDownloadProgress((progress) => {
+      llmStore.setDownloadProgress(
+        progress.percent,
+        progress.speed_mbps,
+        progress.downloaded,
+        progress.total,
+      );
+    }).then((unlisten) => {
+      unlistenProgress = unlisten;
+    });
+  });
+
+  onDestroy(() => {
+    if (unlistenProgress) {
+      unlistenProgress();
+      unlistenProgress = null;
+    }
+  });
+
+  async function checkModelFiles() {
+    for (const model of VERIFIED_MODELS) {
+      const filename = model.url.split("/").pop() ?? "";
+      try {
+        modelFileExists[model.id] = await llmService.checkModelExists(filename);
+        hasPartial[model.id] = await llmService.hasPartialDownload(filename);
+      } catch {
+        modelFileExists[model.id] = null;
+        hasPartial[model.id] = false;
+      }
+    }
+    // Trigger reactivity
+    modelFileExists = { ...modelFileExists };
+    hasPartial = { ...hasPartial };
   }
 
   // ── Verified Model Actions ──
@@ -34,7 +79,8 @@
     const model = getVerifiedModel(modelId);
     if (!model) return;
     try {
-      llmStore.setDownloadProgress(0, 0);
+      llmStore.setDownloadingModel(modelId);
+      llmStore.setDownloadProgress(0, 0, 0, null);
       const path = await llmService.downloadModel(model.url);
       settings.updateLlm({
         modelPath: path,
@@ -42,10 +88,50 @@
         modelTier: "verified",
         toolCallingEnabled: model.supportsToolCalling,
       });
+      modelFileExists[modelId] = path;
+      modelFileExists = { ...modelFileExists };
       llmStore.clearDownloadProgress();
     } catch (e: any) {
-      llmStore.setError(e?.toString() ?? "Download failed");
+      const msg = e?.toString() ?? "";
+      if (!msg.includes("cancelled")) {
+        llmStore.setError(msg || "Download failed");
+      }
       llmStore.clearDownloadProgress();
+    }
+  }
+
+  async function pauseDownload(modelId: string) {
+    const model = getVerifiedModel(modelId);
+    // Pause = cancel but keep .part file
+    await llmService.cancelDownload(false, model?.url);
+    hasPartial[modelId] = true;
+    hasPartial = { ...hasPartial };
+  }
+
+  async function cancelDownload(modelId: string) {
+    const model = getVerifiedModel(modelId);
+    // Cancel = cancel and delete .part file
+    await llmService.cancelDownload(true, model?.url);
+    hasPartial[modelId] = false;
+    hasPartial = { ...hasPartial };
+    llmStore.clearDownloadProgress();
+  }
+
+  async function deleteModel(modelId: string) {
+    const path = modelFileExists[modelId];
+    if (!path) return;
+    try {
+      await llmService.deleteModel(path);
+      modelFileExists[modelId] = null;
+      modelFileExists = { ...modelFileExists };
+      // Clear model path in settings if it was the active model
+      if ($settings.llm.modelPath === path) {
+        settings.updateLlm({ modelPath: "" });
+        const info = await llmService.getStatus();
+        llmStore.updateFromStatus(info);
+      }
+    } catch (e: any) {
+      llmStore.setError(e?.toString() ?? "Delete failed");
     }
   }
 
@@ -60,6 +146,12 @@
     } catch (e: any) {
       llmStore.setError(e?.toString() ?? "Load failed");
     }
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   }
 
   // ── Custom Model ──
@@ -81,7 +173,7 @@
     if (!customHfUrl.trim()) return;
     downloadingCustom = true;
     try {
-      llmStore.setDownloadProgress(0, 0);
+      llmStore.setDownloadProgress(0, 0, 0, null);
       const path = await llmService.downloadModel(customHfUrl.trim());
       settings.updateLlm({
         customModelPath: path,
@@ -91,7 +183,10 @@
       });
       llmStore.clearDownloadProgress();
     } catch (e: any) {
-      llmStore.setError(e?.toString() ?? "Download failed");
+      const msg = e?.toString() ?? "";
+      if (!msg.includes("cancelled")) {
+        llmStore.setError(msg || "Download failed");
+      }
       llmStore.clearDownloadProgress();
     } finally {
       downloadingCustom = false;
@@ -235,6 +330,9 @@
                   {#each VERIFIED_MODELS as model (model.id)}
                     {@const isSelected = $settings.llm.modelTier === "verified" && $settings.llm.selectedVerifiedModel === model.id}
                     {@const isLoaded = $isModelLoaded && isSelected}
+                    {@const isThisDownloading = $llmStore.downloadingModelId === model.id && $isDownloading}
+                    {@const fileExists = !!modelFileExists[model.id]}
+                    {@const partialExists = !!hasPartial[model.id]}
                     <div
                       class="model-card"
                       class:selected={isSelected}
@@ -249,21 +347,73 @@
                       <div class="model-radio" class:selected={isSelected}></div>
                       <div class="model-info">
                         <div class="model-name">{model.name}</div>
-                        <div class="model-meta">{model.quantization} &middot; {model.contextLength} ctx</div>
+                        <div class="model-meta">{model.quantization} &middot; {model.contextLength.toLocaleString()} ctx</div>
                         <div class="model-desc">{model.description}</div>
                         <div class="model-tags">
                           {#each model.tags as tag}
                             <span class="tag" class:tool={tag === "tool-calling"}>{tag}</span>
                           {/each}
                         </div>
-                      </div>
-                      <div class="model-action" onclick={(e) => e.stopPropagation()}>
-                        {#if isLoaded}
-                          <button class="download-btn loaded">Loaded</button>
-                        {:else}
-                          <button class="download-btn" onclick={() => downloadVerifiedModel(model.id)}>Download</button>
+
+                        <!-- Download Progress Bar -->
+                        {#if isThisDownloading}
+                          <div class="download-progress">
+                            <div class="progress-bar-track">
+                              <div class="progress-bar-fill" style="width: {$llmStore.downloadPercent?.toFixed(1) ?? 0}%"></div>
+                            </div>
+                            <div class="progress-info">
+                              <span class="progress-percent">{($llmStore.downloadPercent ?? 0).toFixed(1)}%</span>
+                              {#if $llmStore.downloadedBytes != null}
+                                <span class="progress-bytes">{formatBytes($llmStore.downloadedBytes)}{$llmStore.downloadTotalBytes ? ` / ${formatBytes($llmStore.downloadTotalBytes)}` : ''}</span>
+                              {/if}
+                              {#if $llmStore.downloadSpeedMbps != null && $llmStore.downloadSpeedMbps > 0}
+                                <span class="progress-speed">{$llmStore.downloadSpeedMbps.toFixed(1)} MB/s</span>
+                              {/if}
+                            </div>
+                          </div>
                         {/if}
-                        <span class="model-size">{model.size}</span>
+                      </div>
+
+                      <div class="model-action" onclick={(e) => e.stopPropagation()}>
+                        {#if isThisDownloading}
+                          <!-- Downloading: Pause + Cancel -->
+                          <div class="action-group">
+                            <button class="icon-btn pause" onclick={() => pauseDownload(model.id)} title="Pause download">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                            </button>
+                            <button class="icon-btn cancel" onclick={() => cancelDownload(model.id)} title="Cancel download">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
+                          </div>
+                        {:else if isLoaded}
+                          <!-- Loaded: show status + unload/delete -->
+                          <button class="download-btn loaded">Loaded</button>
+                          <div class="action-group">
+                            <button class="icon-btn delete" onclick={() => deleteModel(model.id)} title="Delete model">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
+                            </button>
+                          </div>
+                        {:else if fileExists}
+                          <!-- Downloaded but not loaded: Load + Delete -->
+                          <button class="download-btn" onclick={() => { settings.updateLlm({ modelPath: modelFileExists[model.id] ?? '', selectedVerifiedModel: model.id, modelTier: 'verified', toolCallingEnabled: model.supportsToolCalling }); loadSelectedModel(); }}>Load</button>
+                          <div class="action-group">
+                            <button class="icon-btn delete" onclick={() => deleteModel(model.id)} title="Delete model">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
+                            </button>
+                          </div>
+                        {:else if partialExists}
+                          <!-- Partial download exists: Resume + Cancel -->
+                          <button class="download-btn resume" onclick={() => downloadVerifiedModel(model.id)}>Resume</button>
+                          <div class="action-group">
+                            <button class="icon-btn cancel" onclick={() => cancelDownload(model.id)} title="Delete partial download">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
+                          </div>
+                        {:else}
+                          <!-- Not downloaded: Download button -->
+                          <button class="download-btn" onclick={() => downloadVerifiedModel(model.id)}>Download</button>
+                          <span class="model-size">{model.size}</span>
+                        {/if}
                       </div>
                     </div>
                   {/each}
@@ -318,38 +468,6 @@
                 </details>
               </div>
 
-              <!-- GPU Settings -->
-              <div class="setting-group">
-                <div class="setting-group-title">GPU Settings</div>
-                <div class="setting-row">
-                  <div class="setting-label">GPU Layers</div>
-                  <div class="slider-row">
-                    <input
-                      type="range"
-                      min="-1"
-                      max="99"
-                      value={$settings.llm.gpuLayers}
-                      oninput={(e) => settings.updateLlm({ gpuLayers: parseInt(e.currentTarget.value) })}
-                      class="range-input"
-                    />
-                    <span class="slider-value">{$settings.llm.gpuLayers === -1 ? "All" : $settings.llm.gpuLayers}</span>
-                  </div>
-                </div>
-                <div class="setting-row">
-                  <div class="setting-label">Context Length</div>
-                  <select
-                    class="select-input"
-                    value={$settings.llm.contextLength}
-                    onchange={(e) => settings.updateLlm({ contextLength: parseInt(e.currentTarget.value) })}
-                  >
-                    <option value="2048">2048</option>
-                    <option value="4096">4096</option>
-                    <option value="8192">8192</option>
-                    <option value="16384">16384</option>
-                  </select>
-                </div>
-              </div>
-
               <!-- Auto Management -->
               <div class="setting-group">
                 <div class="setting-group-title">Auto Management</div>
@@ -380,28 +498,6 @@
                 </div>
               </div>
 
-              <!-- Claude Code Integration -->
-              <div class="setting-group">
-                <div class="setting-group-title">Claude Code Integration</div>
-                <div class="setting-row">
-                  <div>
-                    <div class="setting-label">Use local model for Claude Code</div>
-                    <div class="setting-desc">New terminal sessions will use the local model instead of Anthropic API</div>
-                  </div>
-                  <button
-                    class="toggle"
-                    class:on={$settings.llm.useForClaudeCode}
-                    onclick={() => settings.updateLlm({ useForClaudeCode: !$settings.llm.useForClaudeCode })}
-                  ></button>
-                </div>
-                {#if $settings.llm.useForClaudeCode}
-                  <div class="server-status">
-                    <span class="server-dot"></span>
-                    Server on localhost:11435 — New Claude sessions will use local model
-                  </div>
-                {/if}
-              </div>
-
               <!-- Load/Unload Actions -->
               {#if $settings.llm.modelPath}
                 <div class="setting-group">
@@ -414,9 +510,16 @@
                       <button class="action-btn secondary" onclick={() => llmService.unloadModel().then(() => llmService.getStatus().then(info => llmStore.updateFromStatus(info)))}>Unload Model</button>
                     {/if}
                   </div>
-                  {#if $llmStore.error}
-                    <div class="error-text">{$llmStore.error}</div>
-                  {/if}
+                </div>
+              {/if}
+
+              <!-- Error display -->
+              {#if $llmStore.error}
+                <div class="setting-group">
+                  <div class="error-banner">
+                    <span>{$llmStore.error}</span>
+                    <button class="error-dismiss" onclick={() => llmStore.setError(null)}>&times;</button>
+                  </div>
                 </div>
               {/if}
             {/if}
@@ -616,15 +719,6 @@
     font-weight: 600;
     min-width: 40px;
     text-align: right;
-  }
-
-  .select-input {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text-primary);
-    padding: 6px 10px;
-    font-size: 12px;
   }
 
   .input-row {
@@ -917,9 +1011,121 @@
     cursor: not-allowed;
   }
 
-  .error-text {
-    color: #ef4444;
+  .error-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 6px;
+    padding: 8px 10px;
     font-size: 11px;
+    color: #ef4444;
     word-break: break-word;
+  }
+
+  .error-dismiss {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+
+  .error-dismiss:hover {
+    opacity: 1;
+  }
+
+  /* Download progress */
+  .download-progress {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .progress-bar-track {
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+
+  .progress-info {
+    display: flex;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+
+  .progress-percent {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .progress-speed {
+    margin-left: auto;
+  }
+
+  /* Action button group */
+  .action-group {
+    display: flex;
+    gap: 4px;
+  }
+
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.12s;
+    padding: 0;
+  }
+
+  .icon-btn:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-primary);
+  }
+
+  .icon-btn.pause:hover {
+    border-color: #d29922;
+    color: #d29922;
+  }
+
+  .icon-btn.cancel:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+  }
+
+  .icon-btn.delete:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+  }
+
+  .download-btn.resume {
+    background: #d29922;
+    color: var(--bg-primary);
+  }
+
+  .download-btn.resume:hover {
+    background: #e3b341;
   }
 </style>

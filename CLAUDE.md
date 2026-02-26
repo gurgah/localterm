@@ -126,6 +126,14 @@ Embedded llama.cpp runtime via `llama-cpp-2` Rust crate. See `LOCAL_LLM_PLAN.md`
 
 **Build requirement**: CMake (`brew install cmake` on macOS)
 
+**Per-session local LLM choice** (2026-01-28):
+- New terminal choice screen shows 3 buttons when model is loaded:
+  - "Start Claude" (orange) → Anthropic API
+  - "Start Claude (Local)" (teal) → Local LLM via `ANTHROPIC_BASE_URL=localhost:11435`
+  - "Command Line" (gray) → Plain shell
+- Removed global `useForClaudeCode` toggle from Settings — replaced by per-session choice
+- `Tile.useLocalModel` prop passed to `Terminal.svelte` to control PTY env vars
+
 ### Immediate Next Step
 Wire `integration.ts` → `llmService.ts` so `processAgentInput()` and `triggerErrorRecovery()` actually call the local LLM backend (`/v1/chat/completions` or `/v1/messages`). Parse LLM response to produce `ToolType.BASH` (if it contains a command) or `ToolType.TEXT` (plain answer). Currently both functions return placeholder responses.
 
@@ -163,7 +171,7 @@ npm run tauri build
 ### Menu Structure
 - **View**: New Terminal (Cmd+T), Close Terminal (Cmd+W)
 - **Settings**: Default Location, Show Orchestrator
-- **Help**: Report Bug... (opens mailto:melih@aleonis.co)
+- **Help**: Report Bug... (opens GitHub Issues)
 
 ## Status Logic
 
@@ -189,79 +197,30 @@ The output parser (`outputParser.ts`) detects terminal state with robust debounc
 |----------|--------|
 | `Cmd+1-9` | Select terminal tile by index |
 | `Cmd+T` | New terminal tile |
-| `Cmd+W` | Close active terminal (with confirmation) |
-| `Cmd+Q` | Quit app (with confirmation modal) |
-| `Cmd+[` | Previous terminal |
-| `Cmd+]` | Next terminal |
-| `Cmd+Enter` | Toggle fullscreen for active tile |
-| `Double-click` | Rename terminal session (on title) |
+| `Cmd+W` | Close active terminal |
+| `Cmd+Q` | Quit app |
+| `Cmd+[/]` | Previous/Next terminal |
+| `Cmd+Enter` | Toggle fullscreen |
+| `Cmd++/-/0` | Font size (increase/decrease/reset) |
+| `Cmd+C/V` | Copy/Paste |
+| `Double-click` | Rename session |
 
 ## Roadmap
 
-### v0.1.0 (Current)
-- [x] Tile-based layout with Orchestrator
-- [x] Terminal PTY integration
-- [x] Permission detection & queue
-- [x] Status detection (Working/Ready/Waiting)
-- [x] Traffic light controls
-- [x] Keyboard shortcuts (Cmd+1-9, T, W, Q, [, ], Enter)
-- [x] Quit confirmation modal (Cmd+Q)
-- [x] Session rename (double-click)
-- [x] New terminal choice screen (Claude vs Command Line)
-- [x] Robust Claude detection with debouncing
-- [x] Text selection in terminal
-- [x] Max 12 tiles limit
+### v0.1.0 (Done)
+Tile layout, PTY, permissions, shortcuts, settings panel, font size, copy/paste
 
-### Phase 2 (Planned)
-- [ ] **Broadcast Mode** - Type in all terminals simultaneously (`Cmd+Shift+B`)
-- [ ] **Terminal Search** - Find in buffer (`Cmd+F`)
-- [ ] **Font Size Control** - Zoom in/out (`Cmd+Plus/Minus/0`)
-- [ ] **Theme System** - Multiple themes (Dracula, Nord, One Dark, Solarized)
-- [ ] **Settings Panel** - Font, shell path, appearance options
-- [ ] **Split Pane** - Horizontal/vertical splits with draggable dividers
-- [ ] **Autocomplete** - Command, path, history suggestions
+### Phase 2
+- [ ] Broadcast Mode (`Cmd+Shift+B`)
+- [ ] Terminal Search (`Cmd+F`)
+- [ ] Theme System
+- [ ] Split Pane
 
-### Phase 3 (Future)
-- [ ] **Local LLM** - Ollama integration for AI assistance
-- [ ] **Error Detection** - Pattern-based error suggestions
-- [ ] **Expert Agents** - Git, file search, error recovery agents
+### Phase 3
+- [ ] Error Detection + suggestions
+- [ ] Git/file search agents
 
-## Recent Changes (v0.1.0)
-
-### Latest (2026-01-26)
-- **Modular Architecture Refactor**:
-  - `src/lib/services/claudeDetector.ts` - Pure detection functions
-  - `src/lib/services/permissionHandler.ts` - Permission response handling
-  - `src/lib/utils/terminalBuffer.ts` - xterm.js buffer reader
-  - Separation of concerns: Services → Stores → Views
-- **xterm.js Buffer API** - Uses rendered terminal text instead of raw PTY output
-- **Report Bug Menu** - Opens mailto link via Tauri shell plugin
-- **Cmd+Q Quit Confirmation** - Full-screen modal overlay with blur effect
-- **Session Rename** - Double-click on terminal title to rename (max 20 chars)
-- **New Terminal Choice Screen** - Cmd+T shows "Start Claude" or "Command Line" options instead of auto-starting Claude
-- **Terminal Text Selection** - Fixed: can now select text in terminal
-- **Right-click Context Menu** - Only shows on tile header, not terminal content
-- **xterm.js rightClickSelectsWord** - Right-click on word selects it for quick copy
-- **Max 12 Tiles** - Enforced limit on terminal tiles
-- **Fixed Terminal Close Crashes** - Proper disposal handling with isDisposed flag and safeTerminalOp wrapper
-- **Orchestrator Menu Sync** - Checkbox state properly syncs with localStorage on startup
-
-**Known Issue**: Wide terminal detection bug - see Known Issues section above.
-
-### Earlier
-- Added keyboard shortcuts (Cmd+1-9, Cmd+T, Cmd+W, Cmd+[/], Cmd+Enter)
-- Added terminal status display to Orchestrator
-- **Improved Claude detection** - Status only shows when Claude Code is running
-- **Shell vs Claude sessions** - Separate display for shell-only terminals
-- Implemented idle detection (prompt visibility)
-- Fixed permission parsing - waits for "Esc to cancel" before capturing options
-- Changed accent color to Claude orange (#da7756)
-- Fixed multi-line option text parsing
-- Fixed grid layout for up to 12 tiles
-- Added click-to-activate for terminal tiles
-- **Native macOS traffic lights** with overlay title bar
-- Fixed app icon with transparent corners
-- Hidden tiles still receive PTY output (visibility: hidden vs display: none)
+**Known Issue**: Wide terminal detection bug - see `DEVELOPMENT_TRACKER.md`
 
 ## Deployment Status (2026-01-26)
 

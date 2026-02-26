@@ -25,7 +25,7 @@ const STORAGE_KEY = "localterm-settings";
 const DEFAULT_LLM_SETTINGS: LlmSettings = {
   enabled: false,
   modelTier: "verified",
-  selectedVerifiedModel: "qwen3-4b-q4km",
+  selectedVerifiedModel: "qwen3-4b-instruct-2507",
   customModelPath: "",
   toolCallingEnabled: true,
   modelPath: "",

@@ -73,6 +73,30 @@ export const llmService = {
     return await invoke("llm_download_model", { url: url ?? null });
   },
 
+  /**
+   * Cancel an in-progress download.
+   * cleanup=false → pause (keep .part file for resume)
+   * cleanup=true  → cancel (delete .part file)
+   */
+  async cancelDownload(cleanup: boolean, url?: string): Promise<void> {
+    await invoke("llm_cancel_download", { url: url ?? null, cleanup });
+  },
+
+  /** Delete a downloaded model file. Unloads first if loaded. */
+  async deleteModel(path: string): Promise<void> {
+    await invoke("llm_delete_model", { path });
+  },
+
+  /** Check if a model file exists. Returns path if exists, null otherwise. */
+  async checkModelExists(filename: string): Promise<string | null> {
+    return await invoke("llm_check_model_exists", { filename });
+  },
+
+  /** Check if a partial download (.part file) exists for resume. */
+  async hasPartialDownload(filename: string): Promise<boolean> {
+    return await invoke("llm_has_partial_download", { filename });
+  },
+
   async listModels(): Promise<string[]> {
     return await invoke("llm_list_models");
   },

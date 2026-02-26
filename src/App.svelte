@@ -6,9 +6,8 @@
   import { sessions, activeSessionId } from "./lib/stores/sessions";
   import { settings } from "./lib/stores/settings";
   import { getHomeDir, isTauri } from "./lib/utils/tauri";
-  import { listen, emit } from "@tauri-apps/api/event";
+  import { listen } from "@tauri-apps/api/event";
   import { exit } from "@tauri-apps/plugin-process";
-  import { open } from "@tauri-apps/plugin-dialog";
   import { open as openUrl } from "@tauri-apps/plugin-shell";
   import { llmService } from "./lib/services/llmService";
   import { llmStore, isModelLoaded } from "./lib/stores/llm";
@@ -33,6 +32,7 @@
     expanded: boolean;
     minimized: boolean;
     autoStart?: boolean; // Auto-run "claude" command
+    useLocalModel?: boolean; // Use local LLM instead of Anthropic API
   }
 
   let tiles: Tile[] = [
@@ -54,7 +54,7 @@
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
   const modKey = isMac ? "⌘" : "Ctrl+";
 
-  async function initSession(tileId: string, autoStart: boolean = true) {
+  async function initSession(tileId: string, autoStart: boolean = true, useLocalModel: boolean = false) {
     const tile = tiles.find(t => t.id === tileId);
     if (!tile || tile.type !== "terminal" || tile.sessionId) return;
 
@@ -73,7 +73,7 @@
     const sessionId = sessions.add(name, cwd);
 
     tiles = tiles.map(t =>
-      t.id === tileId ? { ...t, sessionId, autoStart } : t
+      t.id === tileId ? { ...t, sessionId, autoStart, useLocalModel } : t
     );
     activeTileId = tileId; // Set as active tile
     activeSessionId.set(sessionId);
@@ -85,10 +85,7 @@
     } else {
       expandedTile = tileId;
     }
-    // Force terminals to re-fit after CSS transition completes
-    setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
-    setTimeout(() => window.dispatchEvent(new Event("resize")), 250);
-    setTimeout(() => window.dispatchEvent(new Event("resize")), 500);
+    // ResizeObserver in Terminal.svelte handles re-fitting automatically
   }
 
   function addTile() {
@@ -387,27 +384,11 @@
   $: visibleTiles = showOrchestrator ? activeTiles : activeTiles.filter(t => t.type !== "orchestrator");
   $: minimizedTiles = tiles.filter(t => t.minimized && t.type === "terminal");
 
-  // Update menu when default location changes
-  async function updateMenuLocation(path: string) {
-    if (isTauri()) {
-      await emit("update-default-location", path);
-    }
-  }
-
-  // Sync orchestrator visibility to menu checkbox
-  async function syncOrchestratorMenu(show: boolean) {
-    if (isTauri()) {
-      await emit("update-show-orchestrator", show);
-    }
-  }
 
   onMount(async () => {
     window.addEventListener("keydown", handleKeydown);
 
-    // Send initial settings to menu
     const initialSettings = get(settings);
-    await updateMenuLocation(initialSettings.defaultLocation);
-    await syncOrchestratorMenu(initialSettings.showOrchestrator);
 
     // Auto-start LLM engine and server if configured
     if (initialSettings.llm.enabled) {
@@ -415,9 +396,7 @@
         // Load model if auto-load is on and model path is set
         if (initialSettings.llm.autoLoadModel && initialSettings.llm.modelPath) {
           await llmService.loadModel(initialSettings.llm.modelPath);
-        }
-        // Start OpenAI-compatible server if useForClaudeCode is on
-        if (initialSettings.llm.useForClaudeCode) {
+          // Start OpenAI-compatible server when model is loaded (server is lightweight, per-session choice handles usage)
           await llmService.startServer();
         }
       } catch (e) {
@@ -426,22 +405,8 @@
     }
 
     // Listen for menu events from Rust
-    const unlistenDefaultLocation = await listen("menu-default-location", async () => {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: "Select Default Location",
-      });
-      if (selected && typeof selected === "string") {
-        settings.setDefaultLocation(selected);
-        await updateMenuLocation(selected);
-      }
-    });
-
-    const unlistenToggleOrchestrator = await listen("menu-toggle-orchestrator", async () => {
-      const newValue = !get(settings).showOrchestrator;
-      settings.setShowOrchestrator(newValue);
-      await syncOrchestratorMenu(newValue);
+    const unlistenOpenSettings = await listen("menu-open-settings", () => {
+      openSettings("general");
     });
 
     const unlistenNewTerminal = await listen("menu-new-terminal", () => {
@@ -463,8 +428,7 @@
 
     return () => {
       window.removeEventListener("keydown", handleKeydown);
-      unlistenDefaultLocation();
-      unlistenToggleOrchestrator();
+      unlistenOpenSettings();
       unlistenNewTerminal();
       unlistenCloseTerminal();
       unlistenReportBug();
@@ -594,7 +558,7 @@
             <Orchestrator />
           {:else if tile.sessionId}
             {@const session = $sessions.find(s => s.id === tile.sessionId)}
-            <Terminal sessionId={tile.sessionId} sessionName={session?.name || "Terminal"} cwd={session?.cwd || "~"} autoStart={tile.autoStart} fontSize={$settings.fontSize} />
+            <Terminal sessionId={tile.sessionId} sessionName={session?.name || "Terminal"} cwd={session?.cwd || "~"} autoStart={tile.autoStart} useLocalModel={tile.useLocalModel} fontSize={$settings.fontSize} />
           {:else}
             <div class="empty-terminal">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
@@ -608,6 +572,15 @@
                   </svg>
                   Start Claude
                 </button>
+                {#if $isModelLoaded}
+                  <button class="start-btn local" onclick={() => initSession(tile.id, true, true)}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                      <rect x="9" y="9" width="6" height="6"></rect>
+                    </svg>
+                    Start Claude (Local)
+                  </button>
+                {/if}
                 <button class="start-btn secondary" onclick={() => initSession(tile.id, false)}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="4 17 10 11 4 5"></polyline>
@@ -694,7 +667,7 @@
         {/if}
       </div>
       <div class="status-bar-right">
-        {#if $settings.llm.useForClaudeCode}
+        {#if $isModelLoaded}
           <span class="status-bar-server">API: localhost:11435</span>
         {/if}
       </div>
@@ -914,7 +887,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    width: 160px;
+    width: 200px;
   }
 
   .start-btn {
@@ -951,6 +924,15 @@
     color: var(--text-primary);
   }
 
+  .start-btn.local {
+    background: #1a7f7f;
+    border: none;
+    color: white;
+  }
+
+  .start-btn.local:hover {
+    background: #1f9999;
+  }
 
   /* Close confirmation overlay */
   .close-overlay {

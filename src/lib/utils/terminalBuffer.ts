@@ -37,6 +37,51 @@ function normalizeWideTerminalText(text: string): string {
 }
 
 /**
+ * Strip problematic Unicode characters that break regex detection.
+ * Keeps ASCII, common Latin characters, and whitespace.
+ * Replaces box-drawing, spinners, and decorative Unicode with ASCII equivalents.
+ */
+function normalizeUnicode(text: string): string {
+  return text
+    // Replace common Unicode prompt characters with ASCII equivalents
+    .replace(/[❯›»▸▶⟩]/g, '>')
+    .replace(/[❮‹«◂◀⟨]/g, '<')
+    .replace(/[✓✔☑]/g, '[x]')
+    .replace(/[✗✘☒✖]/g, '[!]')
+    .replace(/[●◉⬤]/g, '*')
+    .replace(/[○◯◌]/g, 'o')
+    .replace(/[─━—–]/g, '-')
+    .replace(/[│┃|]/g, '|')
+    .replace(/[┌┍┎┏╔╒╓]/g, '+')
+    .replace(/[┐┑┒┓╗╕╖]/g, '+')
+    .replace(/[└┕┖┗╚╘╙]/g, '+')
+    .replace(/[┘┙┚┛╝╛╜]/g, '+')
+    .replace(/[├┝┞┟┠┡┢┣╠╞╟]/g, '+')
+    .replace(/[┤┥┦┧┨┩┪┫╣╡╢]/g, '+')
+    .replace(/[┬┭┮┯┰┱┲┳╦╤╥]/g, '+')
+    .replace(/[┴┵┶┷┸┹┺┻╩╧╨]/g, '+')
+    .replace(/[┼┽┾┿╀╁╂╃╄╅╆╇╈╉╊╋╬╪╫]/g, '+')
+    // Replace spinner/progress Unicode
+    .replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣾⣽⣻⢿⡿⣟⣯⣷]/g, '*')
+    // Replace fancy arrows
+    .replace(/[→⟶⇒⟹➔➜➙➛]/g, '->')
+    .replace(/[←⟵⇐⟸]/g, '<-')
+    .replace(/[↑⬆⇑]/g, '^')
+    .replace(/[↓⬇⇓]/g, 'v')
+    // Replace fancy quotes with ASCII
+    .replace(/[""„‟]/g, '"')
+    .replace(/[''‛‚]/g, "'")
+    // Replace ellipsis
+    .replace(/…/g, '...')
+    // Remove zero-width and invisible characters
+    .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF\u00AD]/g, '')
+    // Remove variation selectors (emoji modifiers)
+    .replace(/[\uFE00-\uFE0F]/g, '')
+    // Remove combining diacritical marks that may sneak in
+    .replace(/[\u0300-\u036F]/g, '');
+}
+
+/**
  * Reads the visible text from xterm.js buffer
  * This gives us the RENDERED text, not raw PTY output
  * No ANSI stripping needed - xterm already processed everything
@@ -55,7 +100,8 @@ export function getTerminalText(terminal: Terminal, lastNLines?: number): string
     }
   }
 
-  return normalizeWideTerminalText(text.trim());
+  const normalized = normalizeWideTerminalText(text.trim());
+  return normalizeUnicode(normalized);
 }
 
 /**

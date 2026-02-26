@@ -23,3 +23,4 @@ npm-debug.log*
 
 # Tauri
 src-tauri/target/
+human-file.txt

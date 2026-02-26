@@ -91,25 +91,39 @@ function detectPermissionPrompt(text: string): boolean {
 }
 
 /**
- * Parse a permission question from terminal text
+ * Parse a permission question from terminal text.
+ * Only looks at lines AFTER the last permission question indicator
+ * to avoid matching numbered items from Claude's output content.
  */
 function parsePermissionQuestion(text: string): ParsedQuestion | null {
-  // Find the question
+  // Find the question and its position in the text
   let questionText = "Do you want to proceed?";
+  let questionIndex = -1;
+
   for (const pattern of PERMISSION_INDICATORS) {
     const match = text.match(pattern);
-    if (match) {
-      questionText = match[0];
-      break;
+    if (match && match.index !== undefined) {
+      // Use the LAST occurrence — permission prompt is at the bottom
+      const allMatches = [...text.matchAll(new RegExp(pattern.source, pattern.flags + (pattern.flags.includes('g') ? '' : 'g')))];
+      const lastMatch = allMatches[allMatches.length - 1];
+      if (lastMatch && lastMatch.index !== undefined) {
+        if (lastMatch.index > questionIndex) {
+          questionIndex = lastMatch.index;
+          questionText = lastMatch[0];
+        }
+      }
     }
   }
 
+  // Only parse options from text AFTER the permission question
+  const searchText = questionIndex >= 0 ? text.slice(questionIndex) : text;
+
   // Find options (1. Yes, 2. Yes and always..., 3. No)
   const options: { number: string; label: string }[] = [];
-  const optionRegex = /[❯›>\s]*(\d)\.\s+([^\n]+)/g;
+  const optionRegex = /[^0-9\n]*?(\d)\.\s+([^\n]+)/g;
 
   let match;
-  while ((match = optionRegex.exec(text)) !== null) {
+  while ((match = optionRegex.exec(searchText)) !== null) {
     const num = match[1];
     let label = match[2].trim()
       .replace(/[-─]+$/, "")
@@ -142,6 +156,8 @@ function parsePermissionQuestion(text: string): ParsedQuestion | null {
  * Helper to get last N lines from text
  */
 function getLastLines(text: string, n: number): string {
-  const lines = text.split('\n').filter(l => l.trim().length > 0);
+  // Strip any remaining non-printable/control chars except newline and common whitespace
+  const cleaned = text.replace(/[^\x20-\x7E\n\t]/g, '');
+  const lines = cleaned.split('\n').filter(l => l.trim().length > 0);
   return lines.slice(-n).join('\n');
 }

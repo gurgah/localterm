@@ -10,6 +10,7 @@ pub struct AppState {
     pub llm_engine: Arc<LlmEngine>,
     pub llm_server_running: Arc<std::sync::atomic::AtomicBool>,
     pub tool_calling_enabled: Arc<std::sync::atomic::AtomicBool>,
+    pub download_cancel_flag: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[tauri::command]
@@ -175,8 +176,75 @@ pub async fn llm_download_model(
     let download_url = url.unwrap_or_else(|| model_manager::DEFAULT_MODEL_URL.to_string());
     let models_dir = state.llm_engine.models_dir().to_path_buf();
 
-    let dest = model_manager::download_model(app, &download_url, &models_dir, None).await?;
+    // Reset cancel flag before starting
+    state.download_cancel_flag.store(false, std::sync::atomic::Ordering::SeqCst);
+    let cancel_flag = state.download_cancel_flag.clone();
+
+    let dest = model_manager::download_model(app, &download_url, &models_dir, None, cancel_flag).await?;
     Ok(dest.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn llm_cancel_download(
+    state: State<'_, AppState>,
+    url: Option<String>,
+    cleanup: bool,
+) -> Result<(), String> {
+    // Signal cancellation
+    state.download_cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+
+    // If cleanup requested, delete the .part file
+    if cleanup {
+        let download_url = url.unwrap_or_else(|| model_manager::DEFAULT_MODEL_URL.to_string());
+        let models_dir = state.llm_engine.models_dir().to_path_buf();
+        model_manager::cancel_and_cleanup(&models_dir, &download_url);
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn llm_delete_model(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    // Unload first if this is the loaded model
+    let status = state.llm_engine.status();
+    if let Some(ref loaded_path) = status.model_path {
+        if loaded_path == &path {
+            state.llm_engine.unload_model();
+        }
+    }
+
+    model_manager::delete_model(std::path::Path::new(&path))
+}
+
+#[tauri::command]
+pub fn llm_check_model_exists(
+    state: State<'_, AppState>,
+    filename: String,
+) -> Option<String> {
+    let path = state.llm_engine.models_dir().join(&filename);
+    if path.exists() {
+        Some(path.to_string_lossy().to_string())
+    } else {
+        // Check for partial download
+        let part_path = state.llm_engine.models_dir().join(format!("{}.part", filename));
+        if part_path.exists() {
+            None // Partial exists but not complete
+        } else {
+            None
+        }
+    }
+}
+
+#[tauri::command]
+pub fn llm_has_partial_download(
+    state: State<'_, AppState>,
+    filename: String,
+) -> bool {
+    let part_path = state.llm_engine.models_dir().join(format!("{}.part", filename));
+    part_path.exists()
 }
 
 #[tauri::command]

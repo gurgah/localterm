@@ -5,6 +5,8 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { Unicode11Addon } from "@xterm/addon-unicode11";
   import { WebglAddon } from "@xterm/addon-webgl";
+  import { WebLinksAddon } from "@xterm/addon-web-links";
+  import { open as openUrl } from "@tauri-apps/plugin-shell";
   import "@xterm/xterm/css/xterm.css";
   import {
     createSession,
@@ -23,12 +25,14 @@
   import { orchestratorQueue } from "../stores/orchestrator";
   import { settings } from "../stores/settings";
   import { agentResponses } from "../stores/agentResponses";
+  import { isModelLoaded } from "../stores/llm";
   import { shouldRouteToAgent, processAgentInput, triggerErrorRecovery } from "../agents/integration";
 
   export let sessionId: string;
   export let sessionName: string = "Terminal";
   export let cwd: string;
   export let autoStart: boolean = false;
+  export let useLocalModel: boolean = false;
   export let fontSize: number = 13;
 
   let terminalEl: HTMLDivElement;
@@ -223,6 +227,12 @@
 
     terminal.open(terminalEl);
 
+    // Load WebLinks addon for clickable URLs
+    const webLinksAddon = new WebLinksAddon((_event, uri) => {
+      openUrl(uri).catch(console.error);
+    });
+    terminal.loadAddon(webLinksAddon);
+
     // Load WebGL addon for better rendering (skip on Windows — causes black flashes)
     const isWindows = navigator.platform.indexOf("Win") >= 0;
     if (!isWindows) {
@@ -269,9 +279,8 @@
         }
       });
 
-      // Create PTY session — inject ANTHROPIC_BASE_URL if local LLM is enabled
-      const currentSettings = get(settings);
-      if (currentSettings.llm.enabled && currentSettings.llm.useForClaudeCode) {
+      // Create PTY session — inject ANTHROPIC_BASE_URL if using local LLM for this session
+      if (useLocalModel) {
         const port = 11435; // llm_server::DEFAULT_PORT
         const envVars: [string, string][] = [
           ["ANTHROPIC_BASE_URL", `http://localhost:${port}`],
@@ -320,7 +329,7 @@
           const trimmed = inputBuffer.trim();
 
           // Check if this looks like an agent query (? prefix or natural language)
-          if (trimmed.startsWith("?") && get(settings).llm.enabled) {
+          if (trimmed.startsWith("?") && get(settings).llm.enabled && get(isModelLoaded)) {
             const query = trimmed.startsWith("? ") ? trimmed.slice(2) : trimmed.slice(1);
             if (query.length > 0) {
               // Show feedback in terminal
@@ -360,25 +369,14 @@
       terminal.textarea?.addEventListener("focus", handleFocus);
       terminalEl?.addEventListener("mousedown", handleFocus);
 
-      // Handle resize — don't resize PTY when tile is hidden/tiny
-      // (hidden tiles get width:1px/height:1px, causing cols=2)
-      resizeObserver = new ResizeObserver(() => {
-        safeTerminalOp(() => {
-          // Skip fitting if container is too small (tile is hidden)
-          const rect = terminalEl?.getBoundingClientRect();
-          if (!rect || rect.width < 50 || rect.height < 50) return;
+      // All resize operations go through this single debounced function.
+      // This ensures Claude gets exactly ONE SIGWINCH after layout settles,
+      // preventing duplicate TUI redraws.
+      let lastCols = terminal?.cols ?? 0;
+      let lastRows = terminal?.rows ?? 0;
 
-          fitAddon?.fit();
-          if (terminal) {
-            const { cols, rows } = terminal;
-            // Only resize PTY if dimensions are reasonable
-            if (cols >= 10 && rows >= 4) {
-              resizeSession(sessionId, cols, rows).catch(console.error);
-            }
-          }
-        });
-
-        // Debounced second fit after layout settles to fix resize corruption
+      function scheduleFit() {
+        if (isDisposed || !terminal) return;
         if (resizeTimeout) clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
           safeTerminalOp(() => {
@@ -387,48 +385,34 @@
 
             fitAddon?.fit();
             if (terminal) {
-              terminal.refresh(0, terminal.rows - 1);
               const { cols, rows } = terminal;
-              if (cols >= 10 && rows >= 4) {
+              if (cols >= 10 && rows >= 4 && (cols !== lastCols || rows !== lastRows)) {
+                lastCols = cols;
+                lastRows = rows;
+                // Dims changed → clear garbled reflow content, then resize PTY.
+                // Claude WILL get SIGWINCH (dims changed) and WILL redraw,
+                // so the brief blank is immediately filled by Claude's fresh draw.
+                terminal.write('\x1b[2J\x1b[H');
                 resizeSession(sessionId, cols, rows).catch(console.error);
               }
             }
           });
-        }, 150);
-      });
-      resizeObserver.observe(terminalEl);
-
-      // Full refit: fit + refresh + sync PTY size
-      function fullRefit() {
-        safeTerminalOp(() => {
-          const rect = terminalEl?.getBoundingClientRect();
-          if (!rect || rect.width < 50 || rect.height < 50) return;
-
-          fitAddon?.fit();
-          if (terminal) {
-            terminal.refresh(0, terminal.rows - 1);
-            const { cols, rows } = terminal;
-            if (cols >= 10 && rows >= 4) {
-              resizeSession(sessionId, cols, rows).catch(console.error);
-            }
-          }
-        });
+        }, 300);
       }
+
+      resizeObserver = new ResizeObserver(() => scheduleFit());
+      resizeObserver.observe(terminalEl);
 
       // Refit when terminal becomes visible again (e.g. after another tile was expanded)
       intersectionObserver = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting) {
-          // Multiple refit attempts to handle CSS transitions
-          requestAnimationFrame(() => fullRefit());
-          setTimeout(() => fullRefit(), 100);
-          setTimeout(() => fullRefit(), 300);
-          setTimeout(() => fullRefit(), 600);
+          scheduleFit();
         }
       });
       intersectionObserver.observe(terminalEl);
 
       // Also refit on window resize (triggered by expand/collapse)
-      windowResizeHandler = () => fullRefit();
+      windowResizeHandler = () => scheduleFit();
       window.addEventListener("resize", windowResizeHandler);
 
     } catch (e) {
@@ -460,7 +444,7 @@
     // Set disposed flag first
     isDisposed = true;
 
-    // Clear timeouts
+    // Clear all timeouts
     if (detectTimeout) {
       clearTimeout(detectTimeout);
       detectTimeout = null;

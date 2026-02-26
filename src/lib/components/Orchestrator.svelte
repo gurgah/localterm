@@ -3,21 +3,16 @@
   import { orchestratorQueue } from "../stores/orchestrator";
   import { sessions, activeSessionId } from "../stores/sessions";
   import { sendPermissionResponse } from "../services/permissionHandler";
-  import { settings } from "../stores/settings";
   import { agentResponses, activeAgentResponses } from "../stores/agentResponses";
   import { writeToSession } from "../utils/tauri";
   import AgentResponse from "./AgentResponse.svelte";
-  import LlmStatus from "./LlmStatus.svelte";
-  import ModelDownload from "./ModelDownload.svelte";
 
   $: requests = $orchestratorQueue;
   $: pendingCount = requests.length;
   $: allSessions = $sessions;
   $: claudeSessions = allSessions.filter(s => s.claudeRunning);
   $: shellSessions = allSessions.filter(s => !s.claudeRunning);
-  $: llmEnabled = $settings.llm.enabled;
   $: agentCards = $activeAgentResponses;
-  $: hasFirstRun = llmEnabled && !$settings.llm.modelPath;
 
   function handleOptionClick(request: AskUserQuestionInput, optionIndex: number) {
     sendPermissionResponse(request.sessionId, optionIndex);
@@ -157,22 +152,7 @@
     </div>
   {/if}
 
-  {#if hasFirstRun}
-    <div class="first-run-card">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.6">
-        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-      </svg>
-      <div class="first-run-title">Enable Local AI</div>
-      <div class="first-run-desc">Download a model to enable local AI features like command suggestions, error recovery, and more.</div>
-      <ModelDownload />
-    </div>
-  {/if}
 
-  {#if llmEnabled && !hasFirstRun}
-    <div class="llm-section">
-      <LlmStatus />
-    </div>
-  {/if}
 </div>
 
 <style>
@@ -387,35 +367,4 @@
     color: var(--text-secondary);
   }
 
-  .llm-section {
-    margin-top: auto;
-    border-top: 1px solid var(--border);
-    padding-top: 8px;
-  }
-
-
-  /* First-Run Experience */
-  .first-run-card {
-    margin-top: 12px;
-    border: 1px dashed var(--accent);
-    border-radius: 8px;
-    padding: 16px;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .first-run-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .first-run-desc {
-    font-size: 11px;
-    color: var(--text-secondary);
-    line-height: 1.4;
-  }
 </style>

@@ -9,10 +9,9 @@ use llm::LlmEngine;
 use pty::PtyManager;
 use std::sync::{atomic::AtomicBool, Arc};
 use tauri::{
-    menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
-    Emitter, Listener, Manager,
+    menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder},
+    Emitter, Manager,
 };
-use serde_json;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -34,22 +33,12 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // Create Settings submenu
-            let default_location = MenuItemBuilder::with_id("default_location", "Default Location...")
-                .build(app)?;
-
-            let current_location = MenuItemBuilder::with_id("current_location", "  Not set")
-                .enabled(false)
-                .build(app)?;
-
-            let show_orchestrator = CheckMenuItemBuilder::with_id("show_orchestrator", "Show Orchestrator")
-                .checked(true)
+            let preferences = MenuItemBuilder::with_id("preferences", "Preferences...")
+                .accelerator("CmdOrCtrl+,")
                 .build(app)?;
 
             let settings_menu = SubmenuBuilder::new(app, "Settings")
-                .item(&default_location)
-                .item(&current_location)
-                .separator()
-                .item(&show_orchestrator)
+                .item(&preferences)
                 .build()?;
 
             // Create Help submenu
@@ -60,33 +49,6 @@ pub fn run() {
                 .item(&report_bug)
                 .build()?;
 
-            // Listen for location updates from frontend
-            let current_location_clone = current_location.clone();
-            app.listen("update-default-location", move |event| {
-                // Payload is a JSON string, parse it
-                let payload = event.payload();
-                let path: String = serde_json::from_str(payload).unwrap_or_default();
-
-                let display = if path.is_empty() {
-                    "  Not set".to_string()
-                } else {
-                    // Shorten path for display
-                    if path.len() > 30 {
-                        format!("  ...{}", &path[path.len()-27..])
-                    } else {
-                        format!("  {}", path)
-                    }
-                };
-                let _ = current_location_clone.set_text(display);
-            });
-
-            // Listen for orchestrator visibility sync from frontend
-            let show_orchestrator_clone = show_orchestrator.clone();
-            app.listen("update-show-orchestrator", move |event| {
-                let payload = event.payload();
-                let show: bool = serde_json::from_str(payload).unwrap_or(true);
-                let _ = show_orchestrator_clone.set_checked(show);
-            });
 
             // Create View submenu
             let new_terminal = MenuItemBuilder::with_id("new_terminal", "New Terminal")
@@ -115,11 +77,8 @@ pub fn run() {
             app.on_menu_event(move |app, event| {
                 let id = event.id().as_ref();
                 match id {
-                    "default_location" => {
-                        let _ = app.emit("menu-default-location", ());
-                    }
-                    "show_orchestrator" => {
-                        let _ = app.emit("menu-toggle-orchestrator", ());
+                    "preferences" => {
+                        let _ = app.emit("menu-open-settings", ());
                     }
                     "new_terminal" => {
                         let _ = app.emit("menu-new-terminal", ());
@@ -149,6 +108,7 @@ pub fn run() {
             llm_engine,
             llm_server_running: Arc::new(AtomicBool::new(false)),
             tool_calling_enabled: Arc::new(AtomicBool::new(true)),
+            download_cancel_flag: Arc::new(AtomicBool::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
             commands::create_session,
@@ -166,6 +126,10 @@ pub fn run() {
             commands::llm_classify,
             commands::llm_stop_generation,
             commands::llm_download_model,
+            commands::llm_cancel_download,
+            commands::llm_delete_model,
+            commands::llm_check_model_exists,
+            commands::llm_has_partial_download,
             commands::llm_list_models,
             commands::llm_models_dir,
             commands::llm_start_server,
